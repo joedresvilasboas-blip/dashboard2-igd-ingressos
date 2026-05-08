@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="IGD">
+  <meta name="description" content="Dashboard comercial de ingressos IGD">
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <title>IGD — Ingressos</title>
+
+  <!-- Fontes -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/app.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ===== LOADING ===== -->
+  <div class="loading-screen" id="loading-screen">
+    <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#e8b86d;letter-spacing:-.5px">IGD</div>
+    <div class="spinner"></div>
+  </div>
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar" id="main-sidebar" style="display:none">
+    <div class="sidebar-logo">IGD</div>
+
+    <div class="sidebar-section">Principal</div>
+    <button class="nav-item active" data-screen="dashboard" onclick="App.showScreen('dashboard')">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="nav-label">Dashboard</span>
+    </button>
+    <button class="nav-item" data-screen="time" data-admin onclick="App.showScreen('time')">
+      <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span class="nav-label">Time</span>
+    </button>
+    <button class="nav-item" data-screen="estrelas" onclick="App.showScreen('estrelas')">
+      <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      <span class="nav-label">Estrelas</span>
+    </button>
+    <button class="nav-item" data-screen="ranking" onclick="App.showScreen('ranking')">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span class="nav-label">Ranking</span>
+    </button>
+    <button class="nav-item" data-screen="relatorios" onclick="App.showScreen('relatorios')">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span class="nav-label">Relatórios</span>
+    </button>
+
+    <div class="sidebar-section">Gestão</div>
+    <button class="nav-item" data-screen="upload" data-admin onclick="App.showScreen('upload')">
+      <svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+      <span class="nav-label">Upload</span>
+    </button>
+    <button class="nav-item" data-screen="cadastros" data-admin onclick="App.showScreen('cadastros')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 1 0 21 12"/></svg>
+      <span class="nav-label">Cadastros</span>
+    </button>
+  </aside>
+
+  <!-- ===== CONTEÚDO ===== -->
+  <div class="app-content" id="app-content">
+
+  <!-- ===== LOGIN ===== -->
+  <div class="screen" id="screen-login" style="justify-content:center;align-items:center;padding:var(--s6);">
+    <div style="width:100%;max-width:360px;">
+      <div style="text-align:center;margin-bottom:var(--s10);">
+        <div style="font-family:'Syne',sans-serif;font-size:48px;font-weight:800;color:var(--accent);letter-spacing:-2px;line-height:1">IGD</div>
+        <div style="font-size:13px;color:var(--text-3);margin-top:var(--s2);letter-spacing:.1em;text-transform:uppercase">Ingressos Dashboard</div>
+      </div>
+      <div class="card">
+        <div class="input-group">
+          <label class="input-label">Senha de acesso</label>
+          <input type="password" id="login-senha" class="input" placeholder="••••••••••••" autocomplete="current-password">
+        </div>
+        <button class="btn btn-primary btn-full" id="btn-login">Entrar</button>
+        <p id="login-erro" style="color:var(--red);font-size:12px;text-align:center;margin-top:var(--s3);display:none">Senha incorreta</p>
+      </div>
+      <p style="text-align:center;font-size:11px;color:var(--text-3);margin-top:var(--s5)">
+        Dashboard IGD · Equipe Ingressos
+      </p>
+    </div>
+  </div>
+
+  <!-- ===== DASHBOARD ===== -->
+  <div class="screen" id="screen-dashboard">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Dashboard</div>
+        <div class="topbar-sub" id="dash-periodo">Todos os períodos</div>
+      </div>
+      <button class="btn btn-icon btn-secondary" id="btn-filtros" onclick="Dashboard.toggleFiltros()">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="dash-filtros" style="display:none"></div>
+    <div id="dash-visoes"></div>
+    <div class="scroll-area" id="dash-content">
+      <div style="display:flex;align-items:center;justify-content:center;height:200px">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TIME ===== -->
+  <div class="screen" id="screen-time">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Time</div>
+        <div class="topbar-sub">Gestão do time comercial</div>
+      </div>
+      <button class="btn btn-icon btn-secondary" onclick="Time.load()">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
+    </div>
+    <div id="time-abas" style="padding:var(--s3) 0;flex-shrink:0"></div>
+    <div class="scroll-area" style="padding-top:0" id="time-content">
+      <div style="display:flex;align-items:center;justify-content:center;height:200px">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ESTRELAS ===== -->
+  <div class="screen" id="screen-estrelas">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Estrelas</div>
+        <div class="topbar-sub">Progresso da semana</div>
+      </div>
+    </div>
+    <div style="padding:var(--s4) var(--s5);flex-shrink:0;">
+      <input type="text" id="estrelas-busca" class="input" placeholder="Buscar vendedor...">
+    </div>
+    <div style="padding:0 var(--s5) var(--s3);flex-shrink:0;display:flex;gap:var(--s2);flex-wrap:wrap;" id="estrelas-filtros"></div>
+    <div class="scroll-area" style="padding-top:0" id="estrelas-lista">
+      <div style="display:flex;align-items:center;justify-content:center;height:200px">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== RANKING ===== -->
+  <div class="screen" id="screen-ranking">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Ranking</div>
+        <div class="topbar-sub" id="ranking-periodo">—</div>
+      </div>
+    </div>
+    <div style="padding:var(--s4) var(--s5);flex-shrink:0;display:flex;flex-direction:column;gap:var(--s3);">
+      <div style="display:flex;gap:var(--s2);align-items:center;">
+        <select id="ranking-mes" class="input select" style="flex:1"></select>
+      </div>
+      <div style="overflow-x:auto;scrollbar-width:none" id="ranking-semanas"></div>
+      <div class="tabs">
+        <button class="tab active" data-tipo="individual" onclick="Ranking.setTipo('individual',this)">Individual</button>
+        <button class="tab" data-tipo="equipes" onclick="Ranking.setTipo('equipes',this)">Equipes</button>
+      </div>
+    </div>
+    <div class="scroll-area" style="padding-top:0" id="ranking-lista">
+      <div style="display:flex;align-items:center;justify-content:center;height:200px">
+        <div class="spinner"></div>
+      </div>
+    </div>
+    <!-- FAB Copiar -->
+    <button class="btn btn-primary" id="btn-copiar-rank"
+      style="position:fixed;bottom:80px;right:20px;border-radius:50px;gap:6px;box-shadow:var(--shadow);"
+      onclick="Ranking.copiar()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copiar
+    </button>
+  </div>
+
+  <!-- ===== RELATÓRIOS ===== -->
+  <div class="screen" id="screen-relatorios">
+    <div class="topbar">
+      <div class="topbar-title">Relatórios</div>
+    </div>
+    <div class="scroll-area" id="relatorios-content">
+      <!-- Preenchido por Relatorios.init() -->
+    </div>
+  </div>
+
+  <!-- ===== UPLOAD ===== -->
+  <div class="screen" id="screen-upload" data-admin>
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Upload CSV</div>
+        <div class="topbar-sub">Importar vendas da Central</div>
+      </div>
+    </div>
+    <div class="scroll-area" id="upload-content">
+      <!-- Preenchido por Upload.init() -->
+    </div>
+  </div>
+
+  <!-- ===== CADASTROS ===== -->
+  <div class="screen" id="screen-cadastros" data-admin>
+    <div class="topbar">
+      <div class="topbar-title">Cadastros</div>
+    </div>
+    <div class="scroll-area" id="cadastros-content">
+      <!-- Preenchido por Cadastros.init() -->
+    </div>
+  </div>
+
+  <!-- ===== VENDEDOR ===== -->
+  <div class="screen" id="screen-vendedor">
+    <div class="topbar">
+      <button class="btn btn-icon btn-secondary" onclick="App.voltarTela()" style="margin-right:var(--s3)">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div style="flex:1">
+        <div class="topbar-title">Perfil</div>
+        <div class="topbar-sub">Desempenho individual</div>
+      </div>
+    </div>
+    <div class="scroll-area" style="padding-top:0" id="vendedor-content">
+      <div style="display:flex;align-items:center;justify-content:center;height:200px"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  </div><!-- fim app-content -->
+
+</div>
+
+<!-- Scripts -->
+<script src="js/auth.js"></script>
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+<script src="js/login.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/estrelas.js"></script>
+<script src="js/ranking.js"></script>
+<script src="js/relatorios.js"></script>
+<script src="js/upload.js"></script>
+<script src="js/time.js"></script>
+<script src="js/vendedor.js"></script>
+<script src="js/cadastros.js"></script>
+
+</body>
+</html>
