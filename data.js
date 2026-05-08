@@ -5,6 +5,17 @@ const { lerAba } = require('./sheets');
 const { get, set, ABA, V_NOMES } = require('./cache');
 const { buildColMap, toDateStr } = require('./utils');
 
+// Converte data do Sheets (DD/MM/YYYY ou YYYY-MM-DD) para YYYY-MM-DD
+function toDateStrCal(val) {
+  if (!val) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(val)) return val.slice(0, 10);
+  const m = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  return val.slice(0, 10);
+}
+
+
+
 let _colMap = null;
 
 async function getColMap() {
@@ -96,9 +107,9 @@ async function getEventos() {
         produto:   String(r[2]||'').trim(),
         cidade:    String(r[3]||'').trim(),
         mesAno:    String(mesAno||'').trim(),
-        dtIniVend: String(r[5]||'').trim().slice(0,10),
-        dtEvento:  String(r[6]||'').trim().slice(0,10),
-        dtFimEv:   String(r[7]||'').trim().slice(0,10),
+        dtIniVend: toDateStrCal(String(r[5]||'').trim()),
+        dtEvento:  toDateStrCal(String(r[6]||'').trim()),
+        dtFimEv:   toDateStrCal(String(r[7]||'').trim()),
         capacidade: parseInt(r[8]) || '',
       };
     });
@@ -133,8 +144,8 @@ async function getCalendario() {
   const data = rows.slice(1)
     .filter(r => r[0] && r[1])
     .map(r => {
-      const strIni = String(r[1]||'').trim().slice(0,10);
-      const strFim = String(r[2]||'').trim().slice(0,10);
+      const strIni = toDateStrCal(String(r[1]||'').trim());
+      const strFim = toDateStrCal(String(r[2]||'').trim());
       const pI = strIni.split('-'), pF = strFim.split('-');
       return {
         num:    parseInt(r[0]),
