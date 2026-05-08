@@ -149,8 +149,12 @@ const Dashboard = {
 
   toggleOpcao(filtroKey, valor, checked, id) {
     if (!this.filtros[filtroKey]) this.filtros[filtroKey] = [];
-    if (checked) { if (!this.filtros[filtroKey].includes(valor)) this.filtros[filtroKey].push(valor); }
-    else { this.filtros[filtroKey] = this.filtros[filtroKey].filter(v => v !== valor); }
+    // Para semana, extrai só o número (ex: "Sem 12 · 18/03 a 24/03" → "12")
+    const valorReal = filtroKey === 'semana'
+      ? String(valor.match(/Sem\s*(\d+)/)?.[1] || valor)
+      : valor;
+    if (checked) { if (!this.filtros[filtroKey].includes(valorReal)) this.filtros[filtroKey].push(valorReal); }
+    else { this.filtros[filtroKey] = this.filtros[filtroKey].filter(v => v !== valorReal); }
     this._atualizarBotao(filtroKey, id);
     if (this.visao === 'eventos') {
       if (filtroKey === 'evento') this._renderListaEventos();
@@ -161,6 +165,10 @@ const Dashboard = {
   toggleTodos(filtroKey, id, checked) {
     const wrap = document.getElementById('wrap-' + id);
     if (!wrap) return;
+    // Limpa filtros de semana ao selecionar "Todos"
+    if (!checked && filtroKey === 'semana') {
+      this.filtros['semana'] = [];
+    }
     wrap.querySelectorAll('.dash-dropdown input[type=checkbox]:not(:first-child)').forEach(cb => cb.checked = false);
     this.filtros[filtroKey] = [];
     this._atualizarBotao(filtroKey, id);
