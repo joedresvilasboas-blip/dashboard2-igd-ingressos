@@ -110,8 +110,8 @@ const Vendedor = {
     const ps = this._dados.porSemana || [];
     const todasSems = cfg.semanas || [];
     const sel = this._periodoSel;
-    const numsSemDados = new Set(ps.map(s => s.semana));
-    const semsDoMes = todasSems.filter(s => s.strIni <= m.strFim && s.strFim >= m.strIni && numsSemDados.has(s.num));
+    // Mostra todas as semanas do mês — com ou sem dados
+    const semsDoMes = todasSems.filter(s => s.strIni <= m.strFim && s.strFim >= m.strIni);
     const isMes = sel && sel.tipo === 'mes' && sel.nome === m.nome;
 
     el.innerHTML = `<div style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 0">
