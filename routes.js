@@ -914,12 +914,39 @@ router.post('/upload_csv', async (req, res) => {
       else if (categoria === 'VIP') pontos = 3;
       else pontos = 2;
 
-      const dtPag  = parsarData(dtPagStr);
+      // Converte data para YYYY-MM-DD para comparar com calendário
+      const dtPag   = parsarData(dtPagStr);
       const strDPag = dtPag ? dtPag.toLocaleDateString('sv-SE') : '';
-      let semana = '', mes = '';
-      sems.forEach(s => { if (strDPag >= s.strIni && strDPag <= s.strFim) { semana = s.num; mes = s.mes; } });
 
-      const dadosLinha = [id, strDPag, dtRegStr.slice(0,10), codVend, vend.nome, vend.equipe, nomeCli, email, fone, plano, oc, evento, canal, canalMacro, categoria, hc, valor, statusFinal, pontos, semana, mes, dtCancel ? dtCancel.slice(0,10) : '', idVenda, cpf];
+      // Formata data para salvar na planilha: DD/MM/YYYY HH:MM:SS
+      let dtPagSalvar = dtPagStr; // preserva o original do CSV
+      if (!dtPagSalvar && dtPag) {
+        // fallback: reconstrói no formato esperado
+        const dd = String(dtPag.getDate()).padStart(2,'0');
+        const mm = String(dtPag.getMonth()+1).padStart(2,'0');
+        const yy = dtPag.getFullYear();
+        const hh = String(dtPag.getHours()).padStart(2,'0');
+        const mi = String(dtPag.getMinutes()).padStart(2,'0');
+        const ss = String(dtPag.getSeconds()).padStart(2,'0');
+        dtPagSalvar = `${dd}/${mm}/${yy} ${hh}:${mi}:${ss}`;
+      }
+
+      // Formata dtReg também
+      const dtReg = parsarData(dtRegStr);
+      let dtRegSalvar = dtRegStr;
+      if (!dtRegSalvar && dtReg) {
+        const dd = String(dtReg.getDate()).padStart(2,'0');
+        const mm = String(dtReg.getMonth()+1).padStart(2,'0');
+        const yy = dtReg.getFullYear();
+        dtRegSalvar = `${dd}/${mm}/${yy}`;
+      }
+
+      let semana = '', mes = '';
+      if (strDPag) {
+        sems.forEach(s => { if (strDPag >= s.strIni && strDPag <= s.strFim) { semana = s.num; mes = s.mes; } });
+      }
+
+      const dadosLinha = [id, dtPagSalvar, dtRegSalvar, codVend, vend.nome, vend.equipe, nomeCli, email, fone, plano, oc, evento, canal, canalMacro, categoria, hc, valor, statusFinal, pontos, semana, mes, dtCancel || '', idVenda, cpf];
 
       if (idsExistentes[id]) {
         linhasAtualizar.push({ linha: idsExistentes[id], dados: dadosLinha });
@@ -1356,6 +1383,15 @@ router.post('/reprocessar_tudo', async (req, res) => {
       let semana = '', mes = '';
       if (strDPag) {
         sems.forEach(s => { if (strDPag >= s.strIni && strDPag <= s.strFim) { semana = s.num; mes = s.mes; } });
+      }
+      // Se ainda não tem semana, tenta reprocessar a data bruta da planilha
+      if (!semana) {
+        const dtRaw = String(row[idx.dtPag] || '').trim();
+        const dtP   = parsarData(dtRaw);
+        if (dtP) {
+          const strD2 = dtP.toLocaleDateString('sv-SE');
+          sems.forEach(s => { if (strD2 >= s.strIni && strD2 <= s.strFim) { semana = s.num; mes = s.mes; } });
+        }
       }
 
       // Canal
