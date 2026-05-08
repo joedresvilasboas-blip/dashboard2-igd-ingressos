@@ -51,6 +51,10 @@ const App = {
   },
 
   async loadScreen(name) {
+    // Garante config carregado antes de qualquer tela
+    if (!this._config) {
+      try { this._config = await API.getConfig(); } catch {}
+    }
     switch (name) {
       case 'dashboard':  await Dashboard.load(); break;
       case 'time':       await Time.load(); break;

@@ -11,6 +11,10 @@ const Vendedor = {
     const el = document.getElementById('vendedor-content');
     el.innerHTML = '<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
     try {
+      // Garante que o config está disponível
+      if (!App._config) {
+        App._config = await API.getConfig();
+      }
       const d = await API.getPerfilVendedor(codigo);
       this._dados = d;
       this._renderTela();
@@ -21,7 +25,7 @@ const Vendedor = {
 
   // Chamado pelo select de mês
   selecionarMes(idx) {
-    const cfg = (typeof App !== 'undefined' && App._config) || {};
+    const cfg = App._config || {};
     const meses = cfg.meses || [];
     const m = meses[parseInt(idx)];
     if (!m) return;
@@ -34,7 +38,7 @@ const Vendedor = {
   // Chamado pelos botões de semana
   selecionarPeriodo(tipo, valor) {
     if (tipo === 'mes-completo') {
-      const cfg = (typeof App !== 'undefined' && App._config) || {};
+      const cfg = App._config || {};
       const meses = cfg.meses || [];
       const m = meses[this._mesIdx || 0];
       this._periodoSel = m ? { tipo: 'mes', nome: m.nome } : null;
@@ -52,7 +56,7 @@ const Vendedor = {
     if (!sel) return ps;
     if (sel.tipo === 'sem') return ps.filter(s => s.semana === sel.semana);
     if (sel.tipo === 'mes') {
-      const cfg = (typeof App !== 'undefined' && App._config) || {};
+      const cfg = App._config || {};
       const cal = cfg.semanas || [];
       const semsDoMes = cal.filter(s => s.mes === sel.nome);
       if (!semsDoMes.length) return ps;
@@ -84,7 +88,7 @@ const Vendedor = {
   _labelPeriodo() {
     const sel = this._periodoSel;
     if (!sel) {
-      const cfg = (typeof App !== 'undefined' && App._config) || {};
+      const cfg = App._config || {};
       const meses = cfg.meses || [];
       const m = meses[this._mesIdx || 0];
       return m ? m.nome : 'Período';
@@ -98,7 +102,7 @@ const Vendedor = {
   _renderSemanas() {
     const el = document.getElementById('vendedor-semanas');
     if (!el) return;
-    const cfg = (typeof App !== 'undefined' && App._config) || {};
+    const cfg = App._config || {};
     const meses = cfg.meses || [];
     const m = meses[this._mesIdx || 0];
     if (!m) return;
@@ -210,7 +214,7 @@ const Vendedor = {
     const el  = document.getElementById('vendedor-content');
     const d   = this._dados;
     const v   = d.vendedor;
-    const cfg = (typeof App !== 'undefined' && App._config) || {};
+    const cfg = App._config || {};
     const meses = cfg.meses || [];
 
     // Inicializa no mês vigente
