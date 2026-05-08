@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (role) {
       App.role = role;
       App.setupNav();
-      document.getElementById('main-nav').style.display = 'flex';
+      document.getElementById('main-sidebar').style.display = 'flex';
       App.showScreen('dashboard');
     } else {
       erro.style.display = 'block';
@@ -32,6 +32,6 @@ document.addEventListener('DOMContentLoaded', () => {
   inputSenha.addEventListener('keydown', e => { if (e.key === 'Enter') tentarLogin(); });
 
   if (AUTH.check()) {
-    document.getElementById('main-nav').style.display = 'flex';
+    document.getElementById('main-sidebar').style.display = 'flex';
   }
 });
