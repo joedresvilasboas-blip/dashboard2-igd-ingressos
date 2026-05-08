@@ -575,7 +575,7 @@ router.post('/get_semaforo', async (req, res) => {
 
     rows.forEach(row => {
       const canal = String(vRow(row,colMap,'CANAL')||'').trim();
-      if (canal !== 'VA SALES' && canal !== 'RC SALES') return;
+      if (canal !== 'VA SALES') return;
       if (String(vRow(row,colMap,'STATUS')||'').trim().toUpperCase() === 'CANCELADO') return;
       const cod  = String(vRow(row,colMap,'COD_VEND')||'').trim();
       const strD = toDateStr(vRow(row,colMap,'DT_PAG'));
