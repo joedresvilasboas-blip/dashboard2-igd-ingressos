@@ -914,36 +914,39 @@ router.post('/upload_csv', async (req, res) => {
       else if (categoria === 'VIP') pontos = 3;
       else pontos = 2;
 
-      // Converte data para YYYY-MM-DD para comparar com calendário
-      const dtPag   = parsarData(dtPagStr);
-      const strDPag = dtPag ? dtPag.toLocaleDateString('sv-SE') : '';
+      // Extrai YYYY-MM-DD diretamente da string sem usar Date (evita problema de fuso)
+      const extrairStrD = (str) => {
+        if (!str) return '';
+        // DD/MM/YYYY HH:MM:SS ou DD/MM/YYYY
+        const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+        // YYYY-MM-DD
+        const m2 = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m2) return str.slice(0,10);
+        return '';
+      };
 
-      // Formata data para salvar na planilha: DD/MM/YYYY HH:MM:SS
-      let dtPagSalvar = dtPagStr; // preserva o original do CSV
-      if (!dtPagSalvar && dtPag) {
-        // fallback: reconstrói no formato esperado
-        const dd = String(dtPag.getDate()).padStart(2,'0');
-        const mm = String(dtPag.getMonth()+1).padStart(2,'0');
-        const yy = dtPag.getFullYear();
-        const hh = String(dtPag.getHours()).padStart(2,'0');
-        const mi = String(dtPag.getMinutes()).padStart(2,'0');
-        const ss = String(dtPag.getSeconds()).padStart(2,'0');
-        dtPagSalvar = `${dd}/${mm}/${yy} ${hh}:${mi}:${ss}`;
-      }
+      const strDPag    = extrairStrD(dtPagStr);
+      const strDReg    = extrairStrD(dtRegStr);
+      const dtPagSalvar = dtPagStr || ''; // preserva original do CSV
+      const dtRegSalvar = dtRegStr || '';
 
-      // Formata dtReg também
-      const dtReg = parsarData(dtRegStr);
-      let dtRegSalvar = dtRegStr;
-      if (!dtRegSalvar && dtReg) {
-        const dd = String(dtReg.getDate()).padStart(2,'0');
-        const mm = String(dtReg.getMonth()+1).padStart(2,'0');
-        const yy = dtReg.getFullYear();
-        dtRegSalvar = `${dd}/${mm}/${yy}`;
-      }
+      // Função auxiliar para achar semana/mês dado um strD (YYYY-MM-DD)
+      const acharSemana = (strD) => {
+        let sem = '', m = '';
+        if (strD) sems.forEach(s => { if (strD >= s.strIni && strD <= s.strFim) { sem = s.num; m = s.mes; } });
+        return { semana: sem, mes: m };
+      };
 
-      let semana = '', mes = '';
-      if (strDPag) {
-        sems.forEach(s => { if (strDPag >= s.strIni && strDPag <= s.strFim) { semana = s.num; mes = s.mes; } });
+      // Tenta data de pagamento primeiro; fallback para data de registro
+      const strDRef = strDPag || strDReg;
+
+      const { semana, mes } = acharSemana(strDRef);
+
+      // Log para debug (remover após confirmar funcionamento)
+      if (!semana && strDRef) {
+        console.warn(`[UPLOAD] Sem semana para data ${strDRef} — verifique o calendário`);
+        console.warn(`[UPLOAD] Primeira semana: ${sems[0]?.strIni} / Última: ${sems[sems.length-1]?.strFim}`);
       }
 
       const dadosLinha = [id, dtPagSalvar, dtRegSalvar, codVend, vend.nome, vend.equipe, nomeCli, email, fone, plano, oc, evento, canal, canalMacro, categoria, hc, valor, statusFinal, pontos, semana, mes, dtCancel || '', idVenda, cpf];
