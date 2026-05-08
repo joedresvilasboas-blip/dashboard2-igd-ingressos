@@ -1,11 +1,11 @@
-const CACHE_NAME = 'igd-v1';
+const CACHE_NAME = 'igd-v2';
 const ASSETS = [
-  '/dashboard-igd-ingressos/',
-  '/dashboard-igd-ingressos/index.html',
-  '/dashboard-igd-ingressos/css/app.css',
-  '/dashboard-igd-ingressos/js/app.js',
-  '/dashboard-igd-ingressos/js/auth.js',
-  '/dashboard-igd-ingressos/js/api.js',
+  '/',
+  '/index.html',
+  '/css/app.css',
+  '/js/app.js',
+  '/js/auth.js',
+  '/js/api.js',
 ];
 
 self.addEventListener('install', e => {
@@ -21,6 +21,10 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+  // Não intercepta chamadas para a API
+  if (e.request.url.includes('/api/') || e.request.url.includes('onrender.com/api')) {
+    return;
+  }
   e.respondWith(
     fetch(e.request).catch(() => caches.match(e.request))
   );
