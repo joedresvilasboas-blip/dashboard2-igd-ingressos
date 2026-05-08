@@ -1523,7 +1523,111 @@ router.post('/remover_duplicatas', async (req, res) => {
 });
 
 // Rotas não implementadas (retornam ok para não quebrar o frontend)
-const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/salvar_ocs_lote','/salvar_planos_lote','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/upload_vendedores','/get_capacidade_evento','/salvar_noshow_evento','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
+// ====================================================
+// GET CAPACIDADE EVENTO — pagos, gratuitos, cancelados, presença estimada
+// ====================================================
+router.post('/get_capacidade_evento', async (req, res) => {
+  try {
+    const cfg      = await getConfig();
+    const rows     = await getVendasRows();
+    const colMap   = await getColMap();
+    const eventos  = await getEventos();
+
+    const noShowPago     = parseFloat(cfg['NO_SHOW_PAGO']     || 0) || 0;
+    const noShowGratuito = parseFloat(cfg['NO_SHOW_GRATUITO'] || 0) || 0;
+
+    // Mapa de status por evento
+    const mapaEvento = {};
+    rows.forEach(row => {
+      const nomeEv  = String(vRow(row, colMap, 'EVENTO')   || '').trim();
+      const status  = String(vRow(row, colMap, 'STATUS')   || '').trim().toUpperCase();
+      const canal   = String(vRow(row, colMap, 'CANAL')    || '').trim().toUpperCase();
+      const hc      = parseInt(vRow(row, colMap, 'HC'))    || 1;
+      if (!nomeEv) return;
+
+      if (!mapaEvento[nomeEv]) mapaEvento[nomeEv] = { pagos: 0, gratuitos: 0, cancelados: 0 };
+      if (status === 'CANCELADO') {
+        mapaEvento[nomeEv].cancelados += hc;
+      } else if (canal.includes('GT') || canal.includes('GRATUIT')) {
+        mapaEvento[nomeEv].gratuitos += hc;
+      } else {
+        mapaEvento[nomeEv].pagos += hc;
+      }
+    });
+
+    // Monta lista de eventos com presença estimada
+    const listaEventos = eventos.map(ev => {
+      const m   = mapaEvento[ev.nome] || { pagos: 0, gratuitos: 0, cancelados: 0 };
+      const cap = parseInt(ev.capacidade) || 0;
+      const presencaEstimada = cap > 0
+        ? Math.round(m.pagos * (1 - noShowPago / 100) + m.gratuitos * (1 - noShowGratuito / 100))
+        : 0;
+      const pctOcupacao = cap > 0 ? Math.round(presencaEstimada / cap * 100) : 0;
+      return {
+        nome: ev.nome,
+        codigo: ev.codigo,
+        pagos: m.pagos,
+        gratuitos: m.gratuitos,
+        cancelados: m.cancelados,
+        presencaEstimada,
+        pctOcupacao,
+      };
+    });
+
+    res.json({ ok: true, eventos: listaEventos, noShowPago, noShowGratuito });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// SALVAR NO-SHOW — salva % no-show pago e gratuito na aba CONFIG
+// ====================================================
+router.post('/salvar_noshow_evento', async (req, res) => {
+  try {
+    const { pago, gratuito } = req.body;
+    const rows = await lerAba(ABA.CONFIG);
+    const { del } = require('./cache');
+
+    // Procura as linhas NO_SHOW_PAGO e NO_SHOW_GRATUITO na config
+    let linhasPago = [], linhasGrat = [], maxLinha = rows.length + 1;
+    rows.forEach((r, i) => {
+      const chave = String(r[0] || '').trim();
+      if (chave === 'NO_SHOW_PAGO')     linhasPago.push(i + 1);
+      if (chave === 'NO_SHOW_GRATUITO') linhasGrat.push(i + 1);
+    });
+
+    const { google } = require('googleapis');
+    const sheetsModule = require('./sheets');
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    const api = google.sheets({ version: 'v4', auth });
+
+    const data = [];
+    if (linhasPago.length) {
+      data.push({ range: `${ABA.CONFIG}!A${linhasPago[0]}:B${linhasPago[0]}`, values: [['NO_SHOW_PAGO', pago]] });
+    } else {
+      data.push({ range: `${ABA.CONFIG}!A${maxLinha}:B${maxLinha}`, values: [['NO_SHOW_PAGO', pago]] });
+      maxLinha++;
+    }
+    if (linhasGrat.length) {
+      data.push({ range: `${ABA.CONFIG}!A${linhasGrat[0]}:B${linhasGrat[0]}`, values: [['NO_SHOW_GRATUITO', gratuito]] });
+    } else {
+      data.push({ range: `${ABA.CONFIG}!A${maxLinha}:B${maxLinha}`, values: [['NO_SHOW_GRATUITO', gratuito]] });
+    }
+
+    await api.spreadsheets.values.batchUpdate({
+      spreadsheetId: sheetsModule.SPREADSHEET_ID,
+      requestBody: { valueInputOption: 'USER_ENTERED', data },
+    });
+
+    del('config');
+    res.json({ ok: true });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/salvar_ocs_lote','/salvar_planos_lote','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/upload_vendedores','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
 rotasOk.forEach(rota => { router.post(rota, (req, res) => res.json({ ok:true })); router.get(rota, (req, res) => res.json({ ok:true })); });
 
 module.exports = router;
