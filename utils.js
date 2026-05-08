@@ -17,7 +17,19 @@ function toDateStr(val) {
   if (!val) return '';
   if (val instanceof Date) return dataStr(val);
   const s = String(val).trim();
+  // YYYY-MM-DD (já no formato correto)
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  // DD/MM/YYYY ou D/M/YYYY (padrão brasileiro)
+  const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+  // Número serial do Excel/Sheets (dias desde 30/12/1899)
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const serial = parseFloat(s);
+    if (serial > 40000 && serial < 60000) {
+      const d = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+      return d.toISOString().slice(0, 10);
+    }
+  }
   return '';
 }
 
@@ -50,21 +62,18 @@ function isCancelado(status) {
   return String(status || '').trim().toUpperCase() === 'CANCELADO';
 }
 
-// Constrói mapa coluna→índice a partir do cabeçalho
 function buildColMap(header) {
   const map = {};
   header.forEach((nome, i) => { if (nome) map[String(nome).trim()] = i; });
   return map;
 }
 
-// Acessa valor de uma linha pelo nome da coluna
 function v(row, colMap, nomeCol) {
   const idx = colMap[nomeCol];
   if (idx === undefined) return '';
   return row[idx] !== undefined ? row[idx] : '';
 }
 
-// Feriados nacionais
 function getFeriados(ano) {
   const a = ano % 19, b = Math.floor(ano/100), c = ano % 100;
   const d = Math.floor(b/4), e = b % 4, f = Math.floor((b+8)/25);
@@ -75,10 +84,8 @@ function getFeriados(ano) {
   const mes = Math.floor((h+l-7*m+114)/31);
   const dia = ((h+l-7*m+114) % 31) + 1;
   const pascoa = new Date(ano, mes-1, dia);
-
   const add = (d, n) => { const r = new Date(d); r.setDate(r.getDate()+n); return r; };
   const fmt = d => String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-
   const moveis = [add(pascoa,-48), add(pascoa,-47), add(pascoa,-2), pascoa, add(pascoa,60)];
   const fixos = ['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25'];
   const todos = fixos.map(f => `${ano}-${f}`);
