@@ -930,11 +930,27 @@ router.post('/upload_csv', async (req, res) => {
       }
     }
 
-    // Atualiza existentes
-    for (const item of linhasAtualizar) {
-      await escreverRange(`${ABA.VENDAS}!A${item.linha}`, [item.dados]);
+    // Atualiza existentes em batch (uma única chamada à API)
+    if (linhasAtualizar.length) {
+      const { google } = require('googleapis');
+      const sheetsModule = require('./sheets');
+      const auth = new google.auth.JWT(
+        process.env.GOOGLE_CLIENT_EMAIL, null,
+        (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+        ['https://www.googleapis.com/auth/spreadsheets']
+      );
+      const api = google.sheets({ version: 'v4', auth });
+      const data = linhasAtualizar.map(item => ({
+        range: `${ABA.VENDAS}!A${item.linha}`,
+        values: [item.dados],
+      }));
+      await api.spreadsheets.values.batchUpdate({
+        spreadsheetId: sheetsModule.SPREADSHEET_ID,
+        requestBody: { valueInputOption: 'USER_ENTERED', data },
+      });
     }
-    // Insere novas
+
+    // Insere novas em uma única chamada
     if (novasLinhas.length) {
       await adicionarLinhas(ABA.VENDAS, novasLinhas);
     }
