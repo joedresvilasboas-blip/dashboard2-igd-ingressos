@@ -1210,8 +1210,276 @@ router.post('/rd_vendas_time', async (req, res) => {
   } catch(e) { res.json({ erro: e.message }); }
 });
 
+// ====================================================
+// REPROCESSAR CANAIS — relê regras e atualiza CANAL/CANAL_MACRO em todas as vendas
+// ====================================================
+router.post('/reprocessar_todos_canais', async (req, res) => {
+  try {
+    const { del } = require('./cache');
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    const api = google.sheets({ version: 'v4', auth });
+
+    const colMap  = await getColMap();
+    const rows    = await getVendasRows();
+    const regras  = await getRegrasCanal();
+
+    const idxCanal      = colMap[V_NOMES['CANAL']];
+    const idxCanalMacro = colMap[V_NOMES['CANAL_MACRO']];
+    const idxOC         = colMap[V_NOMES['OC']];
+    const idxPlano      = colMap[V_NOMES['PLANO']];
+
+    const data = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row   = rows[i];
+      const oc    = String(row[idxOC]    || '').trim();
+      const plano = String(row[idxPlano] || '').trim();
+      const { canal, canalMacro } = await inferirCanal(oc, plano);
+      if (!canal) continue;
+      const linhaPlan = i + 2; // +1 header +1 base0
+      const colCanal  = String.fromCharCode(65 + idxCanal);
+      const colMacro  = String.fromCharCode(65 + idxCanalMacro);
+      data.push({ range: `${ABA.VENDAS}!${colCanal}${linhaPlan}:${colMacro}${linhaPlan}`, values: [[canal, canalMacro]] });
+    }
+
+    // batchUpdate em blocos de 1000 para não estourar cota
+    const BLOCO = 1000;
+    for (let i = 0; i < data.length; i += BLOCO) {
+      await api.spreadsheets.values.batchUpdate({
+        spreadsheetId: sheetsModule.SPREADSHEET_ID,
+        requestBody: { valueInputOption: 'USER_ENTERED', data: data.slice(i, i + BLOCO) },
+      });
+    }
+
+    del('vendas_rows');
+    res.json({ ok: true, atualizados: data.length });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// REPROCESSAR CATEGORIAS — relê PLANO e atualiza CATEGORIA em todas as vendas
+// ====================================================
+router.post('/reprocessar_todas_categorias', async (req, res) => {
+  try {
+    const { del } = require('./cache');
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    const api = google.sheets({ version: 'v4', auth });
+
+    const colMap = await getColMap();
+    const rows   = await getVendasRows();
+    const idxPlano = colMap[V_NOMES['PLANO']];
+    const idxCat   = colMap[V_NOMES['CATEGORIA']];
+    const colCat   = String.fromCharCode(65 + idxCat);
+
+    const data = rows.map((row, i) => {
+      const plano = String(row[idxPlano] || '').trim();
+      const cat   = inferirCategoria(plano);
+      return { range: `${ABA.VENDAS}!${colCat}${i + 2}`, values: [[cat]] };
+    });
+
+    const BLOCO = 1000;
+    for (let i = 0; i < data.length; i += BLOCO) {
+      await api.spreadsheets.values.batchUpdate({
+        spreadsheetId: sheetsModule.SPREADSHEET_ID,
+        requestBody: { valueInputOption: 'USER_ENTERED', data: data.slice(i, i + BLOCO) },
+      });
+    }
+
+    del('vendas_rows');
+    res.json({ ok: true, atualizados: data.length });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// REPROCESSAR TUDO — semana, mês, canal, categoria, pontos, evento
+// ====================================================
+router.post('/reprocessar_tudo', async (req, res) => {
+  try {
+    const { del } = require('./cache');
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    const api = google.sheets({ version: 'v4', auth });
+
+    const colMap  = await getColMap();
+    const rows    = await getVendasRows();
+    const sems    = await getCalendario();
+    const ocs     = await getOCs();
+    const eventos = await getEventos();
+
+    const mapaOC = {}, mapaEvento = {};
+    ocs.forEach(o => { mapaOC[o.oc+'|'+o.plano] = o; mapaOC[o.oc] = o; });
+    eventos.forEach(e => { mapaEvento[e.codigo] = e; mapaEvento[e.nome] = e; });
+
+    // Índices das colunas que vamos reescrever
+    const idx = {
+      dtPag:      colMap[V_NOMES['DT_PAG']],
+      plano:      colMap[V_NOMES['PLANO']],
+      oc:         colMap[V_NOMES['OC']],
+      canal:      colMap[V_NOMES['CANAL']],
+      canalMacro: colMap[V_NOMES['CANAL_MACRO']],
+      categoria:  colMap[V_NOMES['CATEGORIA']],
+      hc:         colMap[V_NOMES['HC']],
+      valor:      colMap[V_NOMES['VALOR']],
+      status:     colMap[V_NOMES['STATUS']],
+      pontos:     colMap[V_NOMES['PONTOS']],
+      semana:     colMap[V_NOMES['SEMANA']],
+      mes:        colMap[V_NOMES['MES']],
+      evento:     colMap[V_NOMES['EVENTO']],
+    };
+
+    const data = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row     = rows[i];
+      const plano   = String(row[idx.plano]   || '').trim();
+      const oc      = String(row[idx.oc]      || '').trim();
+      const strDPag = toDateStr(row[idx.dtPag]);
+      const status  = String(row[idx.status]  || '').trim().toUpperCase();
+      const valor   = parseFloat(String(row[idx.valor] || '0').replace('R$','').replace(/\s/g,'').replace(',','.')) || 0;
+
+      // Semana e mês
+      let semana = '', mes = '';
+      if (strDPag) {
+        sems.forEach(s => { if (strDPag >= s.strIni && strDPag <= s.strFim) { semana = s.num; mes = s.mes; } });
+      }
+
+      // Canal
+      const ocInfo     = mapaOC[oc+'|'+plano] || mapaOC[oc] || {};
+      const inferido   = await inferirCanal(oc, plano);
+      const canal      = ocInfo.canal      || inferido.canal      || String(row[idx.canal]      || '').trim();
+      const canalMacro = ocInfo.canalMacro || inferido.canalMacro || String(row[idx.canalMacro] || '').trim();
+
+      // Categoria e pontos
+      const categoria = inferirCategoria(plano);
+      let pontos = categoria === 'UPGRADE' ? 1 : categoria === 'VIP' ? 3 : 2;
+      if (status === 'CANCELADO') pontos = 0;
+
+      // Evento
+      const evCod  = ocInfo.eventoCod || '';
+      const evInfo = mapaEvento[evCod] || {};
+      const eventoAtual = String(row[idx.evento] || '').trim();
+      const evento = evInfo.nome || evCod || eventoAtual || inferirEvento(plano);
+
+      // Monta range: colunas CANAL até MES (ajuste conforme sua planilha)
+      // Atualiza individualmente os campos necessários
+      const linhaPlan = i + 2;
+      const col = c => String.fromCharCode(65 + idx[c]);
+
+      data.push({ range: `${ABA.VENDAS}!${col('canal')}${linhaPlan}`,      values: [[canal]] });
+      data.push({ range: `${ABA.VENDAS}!${col('canalMacro')}${linhaPlan}`, values: [[canalMacro]] });
+      data.push({ range: `${ABA.VENDAS}!${col('categoria')}${linhaPlan}`,  values: [[categoria]] });
+      data.push({ range: `${ABA.VENDAS}!${col('pontos')}${linhaPlan}`,     values: [[pontos]] });
+      data.push({ range: `${ABA.VENDAS}!${col('semana')}${linhaPlan}`,     values: [[semana]] });
+      data.push({ range: `${ABA.VENDAS}!${col('mes')}${linhaPlan}`,        values: [[mes]] });
+      if (evento && !eventoAtual) {
+        data.push({ range: `${ABA.VENDAS}!${col('evento')}${linhaPlan}`,   values: [[evento]] });
+      }
+    }
+
+    const BLOCO = 1000;
+    for (let i = 0; i < data.length; i += BLOCO) {
+      await api.spreadsheets.values.batchUpdate({
+        spreadsheetId: sheetsModule.SPREADSHEET_ID,
+        requestBody: { valueInputOption: 'USER_ENTERED', data: data.slice(i, i + BLOCO) },
+      });
+    }
+
+    del('vendas_rows');
+    res.json({ ok: true, atualizados: rows.length });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// REMOVER DUPLICATAS
+// Regra: mesmo ID_CENTRAL → mantém CANCELADO se houver,
+// senão mantém a mais recente. Remove as demais.
+// ====================================================
+router.post('/remover_duplicatas', async (req, res) => {
+  try {
+    const { del } = require('./cache');
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    const api = google.sheets({ version: 'v4', auth });
+
+    const colMap = await getColMap();
+    const rows   = await getVendasRows();
+    const idxID     = colMap[V_NOMES['ID']];
+    const idxStatus = colMap[V_NOMES['STATUS']];
+
+    // Agrupa por ID: { linhaKeep, linhasRemover }
+    const mapaID = {}; // id → { idx, status }[]
+    rows.forEach((row, i) => {
+      const id     = String(row[idxID]     || '').trim();
+      const status = String(row[idxStatus] || '').trim().toUpperCase();
+      if (!id) return;
+      if (!mapaID[id]) mapaID[id] = [];
+      mapaID[id].push({ idx: i, status });
+    });
+
+    // Para cada ID com duplicata, decide qual manter
+    const linhasRemover = []; // índices base-0 das linhas a remover
+    for (const [id, ocorrencias] of Object.entries(mapaID)) {
+      if (ocorrencias.length <= 1) continue;
+      // Prefere CANCELADO; senão última ocorrência (maior idx)
+      const cancelado = ocorrencias.find(o => o.status === 'CANCELADO');
+      const manter    = cancelado || ocorrencias[ocorrencias.length - 1];
+      ocorrencias.forEach(o => { if (o.idx !== manter.idx) linhasRemover.push(o.idx); });
+    }
+
+    if (!linhasRemover.length) {
+      return res.json({ ok: true, removidas: 0, msg: 'Nenhuma duplicata encontrada' });
+    }
+
+    // Pega sheetId da aba VENDAS
+    const meta  = await api.spreadsheets.get({ spreadsheetId: sheetsModule.SPREADSHEET_ID });
+    const sheet = meta.data.sheets.find(s => s.properties.title === ABA.VENDAS);
+    if (!sheet) return res.json({ erro: 'Aba VENDAS não encontrada' });
+    const sheetId = sheet.properties.sheetId;
+
+    // Ordena decrescente para deletar de baixo para cima (não deslocar índices)
+    linhasRemover.sort((a, b) => b - a);
+
+    // Deleta em blocos de 100 requisições por vez
+    const BLOCO = 100;
+    for (let i = 0; i < linhasRemover.length; i += BLOCO) {
+      const requests = linhasRemover.slice(i, i + BLOCO).map(rowIdx => ({
+        deleteDimension: {
+          range: { sheetId, dimension: 'ROWS', startIndex: rowIdx + 1, endIndex: rowIdx + 2 }
+        }
+      }));
+      await api.spreadsheets.batchUpdate({
+        spreadsheetId: sheetsModule.SPREADSHEET_ID,
+        requestBody: { requests },
+      });
+    }
+
+    del('vendas_rows');
+    res.json({ ok: true, removidas: linhasRemover.length });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
 // Rotas não implementadas (retornam ok para não quebrar o frontend)
-const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/salvar_ocs_lote','/salvar_planos_lote','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/reprocessar_todos_canais','/reprocessar_todas_categorias','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/upload_vendedores','/get_capacidade_evento','/salvar_noshow_evento','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
+const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/salvar_ocs_lote','/salvar_planos_lote','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/upload_vendedores','/get_capacidade_evento','/salvar_noshow_evento','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
 rotasOk.forEach(rota => { router.post(rota, (req, res) => res.json({ ok:true })); router.get(rota, (req, res) => res.json({ ok:true })); });
 
 module.exports = router;
