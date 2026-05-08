@@ -1084,8 +1084,114 @@ router.post('/get_perfil_vendedor', async (req, res) => {
   } catch(e) { res.json({ erro: e.message }); }
 });
 
+// ====================================================
+// REGISTRO DIÁRIO — STATUS DO TIME
+// Lê as vendas da planilha principal filtrando pela data
+// ====================================================
+router.post('/rd_status_time', async (req, res) => {
+  try {
+    const { data } = req.body; // formato DD/MM/YYYY
+    if (!data) return res.json({ ok: true, resultados: [] });
+
+    // Converte DD/MM/YYYY → YYYY-MM-DD para comparar com strD
+    const partes = data.split('/');
+    const dataISO = partes.length === 3
+      ? `${partes[2]}-${partes[1].padStart(2,'0')}-${partes[0].padStart(2,'0')}`
+      : data;
+
+    const colMap  = await getColMap();
+    const rows    = await getVendasRows();
+    const vends   = (await getVendedores()).filter(v => v.ativo);
+
+    // Para cada vendedor, verifica se tem alguma venda no dia
+    const resultados = vends.map(v => {
+      const vendasDia = rows.filter(row => {
+        const cod  = String(vRow(row, colMap, 'COD_VEND') || '').trim();
+        const strD = toDateStr(vRow(row, colMap, 'DT_PAG'));
+        return cod === v.codigo && strD === dataISO;
+      });
+      const preencheu = vendasDia.length > 0;
+      const hcTotal   = vendasDia.reduce((s, r) => s + (parseInt(vRow(r, colMap, 'HC')) || 0), 0);
+      return {
+        codigo: v.codigo,
+        nome:   v.apelido || v.nome,
+        equipe: v.equipe,
+        preencheu,
+        horas:  preencheu ? '—' : '',
+        atend:  0,
+        entrv:  0,
+        head:   hcTotal,
+      };
+    });
+
+    resultados.sort((a, b) => {
+      if (a.preencheu !== b.preencheu) return a.preencheu ? -1 : 1;
+      return (a.nome||'').localeCompare(b.nome||'');
+    });
+
+    res.json({ ok: true, resultados });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// REGISTRO DIÁRIO — VENDAS DO TIME
+// Retorna vendas do dia agrupadas por vendedor
+// ====================================================
+router.post('/rd_vendas_time', async (req, res) => {
+  try {
+    const { data } = req.body; // formato DD/MM/YYYY
+    if (!data) return res.json({ ok: true, resultados: [], totalGeral: 0 });
+
+    const partes = data.split('/');
+    const dataISO = partes.length === 3
+      ? `${partes[2]}-${partes[1].padStart(2,'0')}-${partes[0].padStart(2,'0')}`
+      : data;
+
+    const colMap = await getColMap();
+    const rows   = await getVendasRows();
+    const vends  = (await getVendedores()).filter(v => v.ativo);
+
+    const mapaApelido = {};
+    vends.forEach(v => { mapaApelido[v.codigo] = v.apelido || v.nome; });
+
+    // Agrupa vendas do dia por vendedor
+    const porVendedor = {};
+    rows.forEach(row => {
+      const strD = toDateStr(vRow(row, colMap, 'DT_PAG'));
+      if (strD !== dataISO) return;
+      const canal = String(vRow(row, colMap, 'CANAL') || '').trim();
+      if (canal !== 'VA SALES' && canal !== 'RC SALES') return;
+
+      const cod    = String(vRow(row, colMap, 'COD_VEND')    || '').trim();
+      const nome   = mapaApelido[cod] || String(vRow(row, colMap, 'NOME_VEND') || '').trim() || cod;
+      const hc     = parseInt(vRow(row, colMap, 'HC')) || 0;
+      const cliente= String(vRow(row, colMap, 'NOME_CLIENTE') || vRow(row, colMap, 'NOME_CLI') || '').trim();
+      const evento = String(vRow(row, colMap, 'EVENTO')       || '').trim();
+      const cat    = String(vRow(row, colMap, 'CATEGORIA')    || '').trim();
+      const status = String(vRow(row, colMap, 'STATUS')       || '').trim();
+
+      if (!porVendedor[cod]) porVendedor[cod] = { nome, totalVendas: 0, vendas: [] };
+      porVendedor[cod].totalVendas++;
+      porVendedor[cod].vendas.push({ cliente, evento, headcounts: hc, categoria: cat, status, obs: '' });
+    });
+
+    // Inclui vendedores ativos sem venda no dia
+    vends.forEach(v => {
+      if (!porVendedor[v.codigo]) {
+        porVendedor[v.codigo] = { nome: v.apelido || v.nome, totalVendas: 0, vendas: [] };
+      }
+    });
+
+    const resultados = Object.values(porVendedor)
+      .sort((a, b) => b.totalVendas - a.totalVendas || (a.nome||'').localeCompare(b.nome||''));
+
+    const totalGeral = resultados.reduce((s, v) => s + v.totalVendas, 0);
+    res.json({ ok: true, resultados, totalGeral });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
 // Rotas não implementadas (retornam ok para não quebrar o frontend)
-const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/salvar_ocs_lote','/salvar_planos_lote','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/reprocessar_todos_canais','/reprocessar_todas_categorias','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/upload_vendedores','/get_capacidade_evento','/salvar_noshow_evento','/jornada_upgrade','/rd_get_vendedores','/rd_status_time','/rd_vendas_time','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
+const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/salvar_ocs_lote','/salvar_planos_lote','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/reprocessar_todos_canais','/reprocessar_todas_categorias','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/upload_vendedores','/get_capacidade_evento','/salvar_noshow_evento','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
 rotasOk.forEach(rota => { router.post(rota, (req, res) => res.json({ ok:true })); router.get(rota, (req, res) => res.json({ ok:true })); });
 
 module.exports = router;
