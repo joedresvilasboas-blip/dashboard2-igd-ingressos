@@ -1359,6 +1359,7 @@ router.post('/reprocessar_tudo', async (req, res) => {
     // Índices das colunas que vamos reescrever
     const idx = {
       dtPag:      colMap[V_NOMES['DT_PAG']],
+      dtReg:      colMap[V_NOMES['DT_REG']],
       plano:      colMap[V_NOMES['PLANO']],
       oc:         colMap[V_NOMES['OC']],
       canal:      colMap[V_NOMES['CANAL']],
@@ -1378,23 +1379,27 @@ router.post('/reprocessar_tudo', async (req, res) => {
       const row     = rows[i];
       const plano   = String(row[idx.plano]   || '').trim();
       const oc      = String(row[idx.oc]      || '').trim();
-      const strDPag = toDateStr(row[idx.dtPag]);
       const status  = String(row[idx.status]  || '').trim().toUpperCase();
       const valor   = parseFloat(String(row[idx.valor] || '0').replace('R$','').replace(/\s/g,'').replace(',','.')) || 0;
 
+      // Extrai YYYY-MM-DD sem usar Date (evita problema de fuso UTC no Render)
+      const _exStrD = (val) => {
+        if (!val) return '';
+        const s = String(val).trim();
+        const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+        return '';
+      };
+      const strDPag = _exStrD(row[idx.dtPag]);
+      const strDReg = idx.dtReg !== undefined ? _exStrD(row[idx.dtReg]) : '';
+      const strDRef = strDPag || strDReg;
+
       // Semana e mês
       let semana = '', mes = '';
-      if (strDPag) {
-        sems.forEach(s => { if (strDPag >= s.strIni && strDPag <= s.strFim) { semana = s.num; mes = s.mes; } });
-      }
-      // Se ainda não tem semana, tenta reprocessar a data bruta da planilha
-      if (!semana) {
-        const dtRaw = String(row[idx.dtPag] || '').trim();
-        const dtP   = parsarData(dtRaw);
-        if (dtP) {
-          const strD2 = dtP.toLocaleDateString('sv-SE');
-          sems.forEach(s => { if (strD2 >= s.strIni && strD2 <= s.strFim) { semana = s.num; mes = s.mes; } });
-        }
+      if (strDRef) {
+        sems.forEach(s => { if (strDRef >= s.strIni && strDRef <= s.strFim) { semana = s.num; mes = s.mes; } });
+        if (!semana) console.warn(`[REPROCESSAR] Sem semana para: ${strDRef} (pag: ${row[idx.dtPag]}, reg: ${row[idx.dtReg]})`);
       }
 
       // Canal
