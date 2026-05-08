@@ -15,7 +15,7 @@ const Vendedor = {
       if (!App._config) {
         App._config = await API.getConfig();
       }
-      const d = await API.getPerfilVendedor(codigo);
+      const d = await API.getPerfilVendedor(codigo, 99);
       this._dados = d;
       this._renderTela();
     } catch(e) {
@@ -219,7 +219,11 @@ const Vendedor = {
 
     // Inicializa no mês vigente
     if (this._mesIdx === undefined) {
-      this._mesIdx = cfg.mesVigIdx >= 0 ? cfg.mesVigIdx : Math.max(0, meses.length - 1);
+      // Prefere o mês vigente; se não existir, usa o último com dados
+      let idx = cfg.mesVigIdx >= 0 ? cfg.mesVigIdx : meses.length - 1;
+      // Garante que o índice é válido
+      if (idx < 0 || idx >= meses.length) idx = meses.length - 1;
+      this._mesIdx = idx;
       const m = meses[this._mesIdx];
       this._periodoSel = m ? { tipo: 'mes', nome: m.nome } : null;
     }
