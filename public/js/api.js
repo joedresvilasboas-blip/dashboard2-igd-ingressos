@@ -1,19 +1,22 @@
 // ===== CONECTOR COM SERVIDOR NODE =====
 
 const API = {
-  // URL absoluta do servidor
-  BASE_URL: 'https://dashboard2-igd-ingressos.onrender.com/api',
+  // Em produção o frontend está no mesmo servidor, então usamos URL relativa
+  // Em desenvolvimento local, troque para 'http://localhost:3000/api'
+  BASE_URL: '/api',
 
   async get(action, params = {}) {
-    const queryStr = new URLSearchParams(params).toString();
-    const url = `${this.BASE_URL}/${action}${queryStr ? '?' + queryStr : ''}`;
-    const res = await fetch(url);
+    const url = new URL(action, window.location.origin + this.BASE_URL + '/');
+    const fullUrl = this.BASE_URL + '/' + action;
+    const searchParams = new URLSearchParams(params);
+    const queryStr = searchParams.toString();
+    const res = await fetch(queryStr ? `${fullUrl}?${queryStr}` : fullUrl);
     if (!res.ok) throw new Error('Erro na API: ' + res.status);
     return res.json();
   },
 
   async post(action, body = {}) {
-    const res = await fetch(`${this.BASE_URL}/${action}`, {
+    const res = await fetch(this.BASE_URL + '/' + action, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -71,4 +74,6 @@ const API = {
   aplicarRegraCanal(dados)  { return this.post('aplicar_regra_canal', dados); },
   invalidarCache()          { return this.post('invalidar_cache', {}); },
   ping()                    { return this.post('ping', {}); },
+  rdStatusTime(data)        { return this.post('rd_status_time', { data }); },
+  rdVendasTime(data)        { return this.post('rd_vendas_time', { data }); },
 };
