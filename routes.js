@@ -165,14 +165,18 @@ router.get('/estrelas', async (req, res) => {
     sems.forEach(s => { if (hojeS >= s.strIni && hojeS <= s.strFim) semVig = s; });
 
     function calcEstrelas(ptsPorSem) {
+      // Arredonda para 6 casas para evitar erro de ponto flutuante (1/3 + 1/3 + ... != 5)
+      const r6 = n => Math.round(n * 1000000) / 1000000;
+
       let acum = [], total = 0;
       ptsPorSem.forEach(v => {
         const int = Math.floor(v / mj), resto = v - int * mj;
-        total += int + (resto >= mj/2 ? 1/3 : 0);
+        total = r6(total + int + (resto >= mj/2 ? 1/3 : 0));
         acum.push(total);
       });
       const jr_max = acum.length ? acum[acum.length-1] : 0;
-      const st = acum.filter(a => a < 5).length;
+      // Usa tolerância de 0.001 para evitar falha por ponto flutuante
+      const st = acum.filter(a => a < 4.999).length;
       const ja = st <= 0 ? 0 : acum[st-1];
       const vt = st >= ptsPorSem.length ? 0 : ptsPorSem[st];
       const pontosParaPromover = (15 - Math.round(ja * 3)) * (mj / 2);
@@ -181,13 +185,13 @@ router.get('/estrelas', async (req, res) => {
       ptsPorSem.forEach((v, i) => {
         const pts = i > st ? v : (i === st ? vs : 0);
         const int = Math.floor(pts / mp), resto = pts - int * mp;
-        pl += int + (resto >= mp/2 ? 1/3 : 0);
+        pl = r6(pl + int + (resto >= mp/2 ? 1/3 : 0));
       });
-      const res = jr_max >= 5 ? 5 + pl : jr_max;
+      const res = jr_max >= 4.999 ? 5 + pl : jr_max;
       let nivel, estrelas;
-      if (res >= 10)     { nivel = 'SENIOR'; estrelas = 5; }
-      else if (res >= 5) { nivel = 'PLENO';  estrelas = res - 5; }
-      else               { nivel = 'JUNIOR'; estrelas = res; }
+      if (res >= 9.999)     { nivel = 'SENIOR'; estrelas = 5; }
+      else if (res >= 4.999) { nivel = 'PLENO';  estrelas = res - 5; }
+      else                   { nivel = 'JUNIOR'; estrelas = res; }
       return { nivel, estrelas: Math.round(estrelas*1000)/1000,
         inteiras: Math.floor(estrelas),
         tercos: Math.round((estrelas - Math.floor(estrelas)) * 3),
