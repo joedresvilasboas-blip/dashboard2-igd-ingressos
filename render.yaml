@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: igd-dashboard
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: SPREADSHEET_ID
+        value: 1ehXhBEU4O16I_eor58241osEBhHViHztaedkV9tsors
+      - key: GOOGLE_CLIENT_EMAIL
+        value: igd-sheets@igd-dashboard.iam.gserviceaccount.com
+      - key: GOOGLE_PRIVATE_KEY
+        sync: false  # será preenchido manualmente no painel do Render
+      - key: CACHE_TTL
+        value: "300"
+      - key: NODE_ENV
+        value: production
