@@ -1351,6 +1351,7 @@ router.post('/reprocessar_tudo', async (req, res) => {
     const sems    = await getCalendario();
     const ocs     = await getOCs();
     const eventos = await getEventos();
+    const vends   = await getVendedores();
 
     const mapaOC = {}, mapaEvento = {};
     ocs.forEach(o => { mapaOC[o.oc+'|'+o.plano] = o; mapaOC[o.oc] = o; });
