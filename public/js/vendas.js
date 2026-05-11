@@ -261,14 +261,21 @@ const Vendas = {
   },
 
   async _reprocessar(btn) {
-    if (!confirm('Isso vai reprocessar todas as vendas da planilha. Pode demorar. Confirma?')) return;
+    if (!confirm('Isso vai reprocessar todas as vendas da planilha. Pode demorar alguns minutos. Confirma?')) return;
     Utils.btnLoading(btn, true);
+    btn.textContent = '⏳ Processando...';
     try {
       const res = await API.post('reprocessar_tudo', {});
-      Utils.toast(`✓ ${res.atualizados} vendas reprocessadas!`, 'success');
+      if (res.erro) throw new Error(res.erro);
+      Utils.toast(`✓ ${res.atualizados || '?'} vendas reprocessadas!`, 'success');
       await this._buscar();
-    } catch {
-      Utils.toast('Erro ao reprocessar', 'error');
+    } catch(e) {
+      // Timeout do servidor não significa falha — o processo pode ter concluído
+      if (e.message && (e.message.includes('504') || e.message.includes('502') || e.message.includes('Failed'))) {
+        Utils.toast('Processamento iniciado — aguarde 1 minuto e recarregue', 'success');
+      } else {
+        Utils.toast('Erro: ' + e.message, 'error');
+      }
     }
     Utils.btnLoading(btn, false);
   },
