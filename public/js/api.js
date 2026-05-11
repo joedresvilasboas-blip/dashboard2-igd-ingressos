@@ -76,4 +76,5 @@ const API = {
   ping()                    { return this.post('ping', {}); },
   rdStatusTime(data)        { return this.post('rd_status_time', { data }); },
   rdVendasTime(data)        { return this.post('rd_vendas_time', { data }); },
+  gerarLinks()              { return this.post('gerar_links', {}); },
 };

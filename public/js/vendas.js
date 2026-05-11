@@ -45,7 +45,10 @@ const Vendas = {
         ${this._dropdown('vd-f-cat',    'Categoria', cats,    'categoria')}
         ${this._dropdown('vd-f-status', 'Status',    status,  'status')}
         <button class="btn btn-sm btn-secondary" onclick="Vendas._limpar()">Limpar</button>
-        <button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="Vendas._reprocessar(this)">⚡ Reprocessar Tudo</button>
+        <div style="display:flex;gap:var(--s2);margin-left:auto">
+          <button class="btn btn-sm btn-secondary" onclick="Vendas._gerarLinks(this)" title="Popula coluna LINK na planilha">🔗 Links na Planilha</button>
+          <button class="btn btn-sm btn-primary" onclick="Vendas._reprocessar(this)">⚡ Reprocessar Tudo</button>
+        </div>
       </div>`;
   },
 
@@ -149,6 +152,7 @@ const Vendas = {
     const el = document.getElementById('vendas-content');
 
     const cols = [
+      { key: 'id',       label: 'ID',          w: '80px'  },
       { key: 'dtReg',    label: 'Dt. Reg',    w: '120px' },
       { key: 'dtPag',    label: 'Dt. Pag',    w: '120px' },
       { key: 'codVend',  label: 'Cód.',        w: '60px'  },
@@ -184,6 +188,15 @@ const Vendas = {
 
     const tbody = vendas.map(v => `
       <tr style="border-bottom:1px solid var(--border)" onmouseenter="this.style.background='var(--bg-3)'" onmouseleave="this.style.background=''">
+        <td style="padding:7px 10px;font-size:11px;white-space:nowrap">
+          ${v.id
+            ? `<a href="https://central.ignicaodigital.com.br/payment/${v.id}/details" target="_blank"
+                style="color:var(--accent);text-decoration:none;font-weight:600;display:flex;align-items:center;gap:4px"
+                title="Abrir na Central">${v.id}
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>`
+            : '—'}
+        </td>
         <td style="padding:7px 10px;font-size:11px;color:var(--text-3);white-space:nowrap">${v.dtReg||'—'}</td>
         <td style="padding:7px 10px;font-size:11px;color:var(--text-2);white-space:nowrap">${v.dtPag||'—'}</td>
         <td style="padding:7px 10px;font-size:11px;color:var(--text-3)">${v.codVend}</td>
@@ -233,6 +246,18 @@ const Vendas = {
     if (p < 1 || p > this._paginas) return;
     this._pagina = p;
     this._buscar();
+  },
+
+  async _gerarLinks(btn) {
+    if (!confirm('Isso vai popular a coluna LINK na planilha para todas as vendas com ID. Confirma?')) return;
+    Utils.btnLoading(btn, true);
+    try {
+      const res = await API.post('gerar_links', {});
+      Utils.toast(`✓ ${res.atualizados} links gerados na planilha!`, 'success');
+    } catch {
+      Utils.toast('Erro ao gerar links', 'error');
+    }
+    Utils.btnLoading(btn, false);
   },
 
   async _reprocessar(btn) {
