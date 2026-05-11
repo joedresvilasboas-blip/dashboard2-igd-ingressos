@@ -62,6 +62,7 @@ const App = {
       case 'estrelas':   await Estrelas.load(); break;
       case 'ranking':    await Ranking.load(); break;
       case 'relatorios': Relatorios.init(); break;
+      case 'vendas':     await Vendas.load(); break;
       case 'upload':     Upload.init(); break;
       case 'cadastros':  Cadastros.init(); break;
     }
