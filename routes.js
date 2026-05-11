@@ -1456,25 +1456,19 @@ router.post('/reprocessar_tudo', async (req, res) => {
       push('equipe',     equipe);
     }
 
-    // Envia resposta imediata e continua processando em background
-    res.json({ ok: true, atualizados: rows.length });
-
-    // Processa em background após responder
+    // Processa em blocos com pausa para não estourar cota
     const BLOCO = 500;
-    (async () => {
-      for (let i = 0; i < data.length; i += BLOCO) {
-        try {
-          await api.spreadsheets.values.batchUpdate({
-            spreadsheetId: sheetsModule.SPREADSHEET_ID,
-            requestBody: { valueInputOption: 'USER_ENTERED', data: data.slice(i, i + BLOCO) },
-          });
-          // Pequena pausa entre blocos para não estourar cota
-          if (i + BLOCO < data.length) await new Promise(r => setTimeout(r, 300));
-        } catch(e) { console.error('[REPROCESSAR] Erro no bloco', i, e.message); }
-      }
-      del('vendas_rows');
-      console.log(`[REPROCESSAR] Concluído: ${rows.length} vendas, ${data.length} campos atualizados`);
-    })();
+    for (let i = 0; i < data.length; i += BLOCO) {
+      await api.spreadsheets.values.batchUpdate({
+        spreadsheetId: sheetsModule.SPREADSHEET_ID,
+        requestBody: { valueInputOption: 'USER_ENTERED', data: data.slice(i, i + BLOCO) },
+      });
+      if (i + BLOCO < data.length) await new Promise(r => setTimeout(r, 500));
+    }
+
+    del('vendas_rows');
+    console.log(`[REPROCESSAR] Concluído: ${rows.length} vendas, ${data.length} campos atualizados`);
+    res.json({ ok: true, atualizados: rows.length });
 
   } catch(e) { res.json({ erro: e.message }); }
 });

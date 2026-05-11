@@ -39,8 +39,10 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`✅ IGD Dashboard rodando na porta ${PORT}`);
   console.log(`   Frontend: http://localhost:${PORT}`);
   console.log(`   API:      http://localhost:${PORT}/api`);
 });
+// Timeout de 10 minutos para rotas pesadas (reprocessar_tudo)
+server.timeout = 10 * 60 * 1000;
