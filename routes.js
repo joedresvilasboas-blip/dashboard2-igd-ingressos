@@ -1627,7 +1627,39 @@ router.post('/salvar_noshow_evento', async (req, res) => {
   } catch(e) { res.json({ erro: e.message }); }
 });
 
-const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/salvar_ocs_lote','/salvar_planos_lote','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/upload_vendedores','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
+// ====================================================
+// UPLOAD VENDEDORES — insere novos vendedores do CSV
+// ====================================================
+router.post('/upload_vendedores', async (req, res) => {
+  try {
+    const { linhas } = req.body; // [{ codigo, nome }]
+    if (!linhas || !linhas.length) return res.json({ ok: true, inseridos: 0, ignorados: 0 });
+
+    const { del } = require('./cache');
+    const vends = await getVendedores();
+    const existentes = new Set(vends.map(v => v.codigo.trim().toUpperCase()));
+
+    const novas = linhas.filter(l => l.codigo && l.nome && !existentes.has(String(l.codigo).trim().toUpperCase()));
+
+    if (novas.length) {
+      const rows = novas.map(l => [
+        String(l.codigo).trim(),
+        String(l.nome).trim(),
+        '', // apelido
+        '', // equipe
+        'JUNIOR', // nivel
+        'SIM', // ativo
+        '', // dtInicio
+      ]);
+      await adicionarLinhas(ABA.VENDEDORES, rows);
+      del('vendedores');
+    }
+
+    res.json({ ok: true, inseridos: novas.length, ignorados: linhas.length - novas.length });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/salvar_ocs_lote','/salvar_planos_lote','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
 rotasOk.forEach(rota => { router.post(rota, (req, res) => res.json({ ok:true })); router.get(rota, (req, res) => res.json({ ok:true })); });
 
 module.exports = router;
