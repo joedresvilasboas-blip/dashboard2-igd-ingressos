@@ -149,6 +149,7 @@ const Vendas = {
     const el = document.getElementById('vendas-content');
 
     const cols = [
+      { key: 'dtReg',    label: 'Dt. Reg',    w: '120px' },
       { key: 'dtPag',    label: 'Dt. Pag',    w: '120px' },
       { key: 'codVend',  label: 'Cód.',        w: '60px'  },
       { key: 'nomeVend', label: 'Vendedor',    w: '130px' },
@@ -183,7 +184,8 @@ const Vendas = {
 
     const tbody = vendas.map(v => `
       <tr style="border-bottom:1px solid var(--border)" onmouseenter="this.style.background='var(--bg-3)'" onmouseleave="this.style.background=''">
-        <td style="padding:7px 10px;font-size:11px;color:var(--text-2);white-space:nowrap">${v.dtPag||v.dtReg||'—'}</td>
+        <td style="padding:7px 10px;font-size:11px;color:var(--text-3);white-space:nowrap">${v.dtReg||'—'}</td>
+        <td style="padding:7px 10px;font-size:11px;color:var(--text-2);white-space:nowrap">${v.dtPag||'—'}</td>
         <td style="padding:7px 10px;font-size:11px;color:var(--text-3)">${v.codVend}</td>
         <td style="padding:7px 10px;font-size:11px;color:var(--text);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${v.nomeVend}">${v.nomeVend}</td>
         <td style="padding:7px 10px;font-size:11px;color:var(--text-3)">${v.equipe}</td>
