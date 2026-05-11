@@ -263,20 +263,31 @@ const Vendas = {
   async _reprocessar(btn) {
     if (!confirm('Isso vai reprocessar todas as vendas da planilha. Pode demorar alguns minutos. Confirma?')) return;
     Utils.btnLoading(btn, true);
-    btn.textContent = '⏳ Processando...';
+    const origHtml = btn._orig || btn.innerHTML;
+    btn.innerHTML = '⏳ Processando...';
     try {
-      const res = await API.post('reprocessar_tudo', {});
+      // Timeout de 10 minutos para aguardar reprocessamento completo
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+      const raw = await fetch('/api/reprocessar_tudo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const res = await raw.json();
       if (res.erro) throw new Error(res.erro);
-      Utils.toast(`✓ ${res.atualizados || '?'} vendas reprocessadas!`, 'success');
+      Utils.toast(`✓ ${res.atualizados} vendas reprocessadas!`, 'success');
       await this._buscar();
     } catch(e) {
-      // Timeout do servidor não significa falha — o processo pode ter concluído
-      if (e.message && (e.message.includes('504') || e.message.includes('502') || e.message.includes('Failed'))) {
-        Utils.toast('Processamento iniciado — aguarde 1 minuto e recarregue', 'success');
+      if (e.name === 'AbortError') {
+        Utils.toast('Timeout — verifique os logs do Render', 'error');
       } else {
         Utils.toast('Erro: ' + e.message, 'error');
       }
     }
-    Utils.btnLoading(btn, false);
+    btn.innerHTML = origHtml;
+    btn.disabled = false;
   },
 };
