@@ -1717,14 +1717,15 @@ router.post('/vendas_lista', async (req, res) => {
       });
     });
 
+    // Converte DD/MM/YYYY HH:MM:SS → timestamp para ordenar corretamente
+    const toTs = (str) => {
+      if (!str) return 0;
+      const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+      if (!m) return 0;
+      return new Date(+m[3], +m[2]-1, +m[1], +(m[4]||0), +(m[5]||0), +(m[6]||0)).getTime();
+    };
     // Ordena por data de registro decrescente
-    linhas.sort((a,b) => {
-      const da = a.dtReg || a.dtPag || '';
-      const db = b.dtReg || b.dtPag || '';
-      if (db > da) return 1;
-      if (db < da) return -1;
-      return 0;
-    });
+    linhas.sort((a,b) => (toTs(b.dtReg||b.dtPag)) - (toTs(a.dtReg||a.dtPag)));
 
     const total = linhas.length;
     const inicio = (pagina - 1) * porPagina;
