@@ -1714,6 +1714,9 @@ router.post('/vendas_lista', async (req, res) => {
         semana,
         mes,
         idVenda:    String(vRow(row,colMap,'ID_VENDA')  ||'').trim(),
+        link: String(vRow(row,colMap,'ID') ||'').trim()
+          ? `https://central.ignicaodigital.com.br/payment/${String(vRow(row,colMap,'ID')||'').trim()}/details`
+          : '',
       });
     });
 
@@ -1733,6 +1736,60 @@ router.post('/vendas_lista', async (req, res) => {
     const resultado = linhas.slice(inicio, inicio + porPagina);
 
     res.json({ ok: true, vendas: resultado, total, pagina, paginas });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// GERAR LINKS — popula coluna LINK na planilha VENDAS
+// ====================================================
+router.post('/gerar_links', async (req, res) => {
+  try {
+    const { del } = require('./cache');
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    const api = google.sheets({ version: 'v4', auth });
+
+    const colMap = await getColMap();
+    const rows   = await getVendasRows();
+    const idxID  = colMap[V_NOMES['ID']];
+
+    // Verifica se coluna LINK já existe, senão usa próxima coluna disponível
+    let idxLink = colMap['LINK'];
+    if (idxLink === undefined) {
+      // Adiciona cabeçalho LINK na próxima coluna
+      const header = await lerAba(ABA.VENDAS);
+      idxLink = header[0].length; // próxima coluna
+      const colLetra = (n) => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26)) + String.fromCharCode(65+(n%26));
+      await escreverRange(`${ABA.VENDAS}!${colLetra(idxLink)}1`, [['LINK']]);
+    }
+
+    const colLetra = (n) => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26)) + String.fromCharCode(65+(n%26));
+    const colLink = colLetra(idxLink);
+
+    const data = rows
+      .map((row, i) => {
+        const id = String(row[idxID] || '').trim();
+        if (!id) return null;
+        const link = `https://central.ignicaodigital.com.br/payment/${id}/details`;
+        return { range: `${ABA.VENDAS}!${colLink}${i + 2}`, values: [[link]] };
+      })
+      .filter(Boolean);
+
+    const BLOCO = 1000;
+    for (let i = 0; i < data.length; i += BLOCO) {
+      await api.spreadsheets.values.batchUpdate({
+        spreadsheetId: sheetsModule.SPREADSHEET_ID,
+        requestBody: { valueInputOption: 'USER_ENTERED', data: data.slice(i, i + BLOCO) },
+      });
+    }
+
+    del('vendas_rows');
+    res.json({ ok: true, atualizados: data.length });
   } catch(e) { res.json({ erro: e.message }); }
 });
 
