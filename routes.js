@@ -1356,10 +1356,17 @@ router.post('/reprocessar_tudo', async (req, res) => {
     ocs.forEach(o => { mapaOC[o.oc+'|'+o.plano] = o; mapaOC[o.oc] = o; });
     eventos.forEach(e => { mapaEvento[e.codigo] = e; mapaEvento[e.nome] = e; });
 
+    // Mapa de vendedores por código
+    const mapaVend = {};
+    vends.forEach(v => { mapaVend[v.codigo.trim()] = v; });
+
     // Índices das colunas que vamos reescrever
     const idx = {
       dtPag:      colMap[V_NOMES['DT_PAG']],
       dtReg:      colMap[V_NOMES['DT_REG']],
+      codVend:    colMap[V_NOMES['COD_VEND']],
+      nomeVend:   colMap[V_NOMES['NOME_VEND']],
+      equipe:     colMap[V_NOMES['EQUIPE']],
       plano:      colMap[V_NOMES['PLANO']],
       oc:         colMap[V_NOMES['OC']],
       canal:      colMap[V_NOMES['CANAL']],
@@ -1408,10 +1415,9 @@ router.post('/reprocessar_tudo', async (req, res) => {
       const canal      = ocInfo.canal      || inferido.canal      || String(row[idx.canal]      || '').trim();
       const canalMacro = ocInfo.canalMacro || inferido.canalMacro || String(row[idx.canalMacro] || '').trim();
 
-      // Categoria e pontos
+      // Categoria e pontos — cancelado mantém pontuação normal
       const categoria = inferirCategoria(plano);
-      let pontos = categoria === 'UPGRADE' ? 1 : categoria === 'VIP' ? 3 : 2;
-      if (status === 'CANCELADO') pontos = 0;
+      const pontos = categoria === 'UPGRADE' ? 1 : categoria === 'VIP' ? 3 : 2;
 
       // Evento
       const evCod  = ocInfo.eventoCod || '';
@@ -1419,20 +1425,34 @@ router.post('/reprocessar_tudo', async (req, res) => {
       const eventoAtual = String(row[idx.evento] || '').trim();
       const evento = evInfo.nome || evCod || eventoAtual || inferirEvento(plano);
 
-      // Monta range: colunas CANAL até MES (ajuste conforme sua planilha)
-      // Atualiza individualmente os campos necessários
-      const linhaPlan = i + 2;
-      const col = c => String.fromCharCode(65 + idx[c]);
+      // Vendedor e equipe — relê da aba VENDEDORES pelo código
+      const codVend  = String(row[idx.codVend] || '').trim();
+      const vendInfo = mapaVend[codVend] || {};
+      const nomeVend = vendInfo.nome   || String(row[idx.nomeVend] || '').trim();
+      const equipe   = vendInfo.equipe || String(row[idx.equipe]   || '').trim();
 
-      data.push({ range: `${ABA.VENDAS}!${col('canal')}${linhaPlan}`,      values: [[canal]] });
-      data.push({ range: `${ABA.VENDAS}!${col('canalMacro')}${linhaPlan}`, values: [[canalMacro]] });
-      data.push({ range: `${ABA.VENDAS}!${col('categoria')}${linhaPlan}`,  values: [[categoria]] });
-      data.push({ range: `${ABA.VENDAS}!${col('pontos')}${linhaPlan}`,     values: [[pontos]] });
-      data.push({ range: `${ABA.VENDAS}!${col('semana')}${linhaPlan}`,     values: [[semana]] });
-      data.push({ range: `${ABA.VENDAS}!${col('mes')}${linhaPlan}`,        values: [[mes]] });
-      if (evento && !eventoAtual) {
-        data.push({ range: `${ABA.VENDAS}!${col('evento')}${linhaPlan}`,   values: [[evento]] });
-      }
+      const linhaPlan = i + 2;
+      const col = c => {
+        const n = idx[c];
+        if (n === undefined) return null;
+        return n < 26 ? String.fromCharCode(65 + n) : String.fromCharCode(64 + Math.floor(n/26)) + String.fromCharCode(65 + (n%26));
+      };
+
+      const push = (c, v) => { const colLetra = col(c); if (colLetra) data.push({ range: `${ABA.VENDAS}!${colLetra}${linhaPlan}`, values: [[v]] }); };
+
+      // HC — extraído do plano
+      const hc = extrairHC(plano);
+
+      push('canal',      canal);
+      push('canalMacro', canalMacro);
+      push('categoria',  categoria);
+      push('pontos',     pontos);
+      push('hc',         hc);
+      push('semana',     semana);
+      push('mes',        mes);
+      push('evento',     evento);
+      push('nomeVend',   nomeVend);
+      push('equipe',     equipe);
     }
 
     const BLOCO = 1000;
