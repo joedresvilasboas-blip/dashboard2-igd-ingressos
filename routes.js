@@ -1717,8 +1717,14 @@ router.post('/vendas_lista', async (req, res) => {
       });
     });
 
-    // Ordena por data desc
-    linhas.sort((a,b) => (b.dtPag||b.dtReg) > (a.dtPag||a.dtReg) ? 1 : -1);
+    // Ordena por data de registro decrescente
+    linhas.sort((a,b) => {
+      const da = a.dtReg || a.dtPag || '';
+      const db = b.dtReg || b.dtPag || '';
+      if (db > da) return 1;
+      if (db < da) return -1;
+      return 0;
+    });
 
     const total = linhas.length;
     const inicio = (pagina - 1) * porPagina;
