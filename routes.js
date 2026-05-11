@@ -1646,9 +1646,9 @@ router.post('/upload_vendedores', async (req, res) => {
         String(l.codigo).trim(),
         String(l.nome).trim(),
         '', // apelido
-        '', // equipe
+        'IGD', // equipe
         'JUNIOR', // nivel
-        'SIM', // ativo
+        'NÃO', // ativo
         '', // dtInicio
       ]);
       await adicionarLinhas(ABA.VENDEDORES, rows);
@@ -1656,6 +1656,76 @@ router.post('/upload_vendedores', async (req, res) => {
     }
 
     res.json({ ok: true, inseridos: novas.length, ignorados: linhas.length - novas.length });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// VENDAS LISTA — retorna vendas filtradas com paginação
+// ====================================================
+router.post('/vendas_lista', async (req, res) => {
+  try {
+    const { filtros = {}, pagina = 1, porPagina = 100 } = req.body;
+    const colMap = await getColMap();
+    const dados  = await getVendasRows();
+
+    const match = (filtro, valor) => {
+      if (!filtro || filtro.length === 0) return true;
+      if (Array.isArray(filtro)) return filtro.length === 0 || filtro.includes(valor);
+      return filtro === valor;
+    };
+
+    const linhas = [];
+    dados.forEach((row, i) => {
+      const canal      = String(vRow(row,colMap,'CANAL')      ||'').trim();
+      const evento     = String(vRow(row,colMap,'EVENTO')     ||'').trim();
+      const mes        = String(vRow(row,colMap,'MES')        ||'').trim();
+      const semana     = String(vRow(row,colMap,'SEMANA')     ||'').trim();
+      const cat        = String(vRow(row,colMap,'CATEGORIA')  ||'').trim();
+      const canalMacro = String(vRow(row,colMap,'CANAL_MACRO')||'').trim();
+      const status     = String(vRow(row,colMap,'STATUS')     ||'').trim().toUpperCase();
+
+      if (!match(filtros.mes,        mes))        return;
+      if (!match(filtros.semana,     semana))      return;
+      if (!match(filtros.canal,      canal))       return;
+      if (!match(filtros.canalMacro, canalMacro))  return;
+      if (!match(filtros.evento,     evento))      return;
+      if (!match(filtros.categoria,  cat))         return;
+      if (!match(filtros.status,     status))      return;
+
+      linhas.push({
+        idx:        i + 2, // linha na planilha
+        id:         String(vRow(row,colMap,'ID')        ||'').trim(),
+        dtPag:      String(vRow(row,colMap,'DT_PAG')    ||'').trim(),
+        dtReg:      String(vRow(row,colMap,'DT_REG')    ||'').trim(),
+        codVend:    String(vRow(row,colMap,'COD_VEND')  ||'').trim(),
+        nomeVend:   String(vRow(row,colMap,'NOME_VEND') ||'').trim(),
+        equipe:     String(vRow(row,colMap,'EQUIPE')    ||'').trim(),
+        nomeCli:    String(vRow(row,colMap,'NOME_CLI')  ||'').trim(),
+        plano:      String(vRow(row,colMap,'PLANO')     ||'').trim(),
+        oc:         String(vRow(row,colMap,'OC')        ||'').trim(),
+        evento,
+        canal,
+        canalMacro,
+        categoria:  cat,
+        hc:         parseInt(vRow(row,colMap,'HC'))     ||0,
+        valor:      parseFloat(String(vRow(row,colMap,'VALOR')||'0').replace('R$','').replace(/\s/g,'').replace(',','.')) ||0,
+        status:     String(vRow(row,colMap,'STATUS')    ||'').trim(),
+        pontos:     parseFloat(vRow(row,colMap,'PONTOS'))||0,
+        semana,
+        mes,
+        idVenda:    String(vRow(row,colMap,'ID_VENDA')  ||'').trim(),
+      });
+    });
+
+    // Ordena por data desc
+    linhas.sort((a,b) => (b.dtPag||b.dtReg) > (a.dtPag||a.dtReg) ? 1 : -1);
+
+    const total = linhas.length;
+    const inicio = (pagina - 1) * porPagina;
+    const paginas = Math.ceil(total / porPagina);
+    const resultado = linhas.slice(inicio, inicio + porPagina);
+
+    res.json({ ok: true, vendas: resultado, total, pagina, paginas });
   } catch(e) { res.json({ erro: e.message }); }
 });
 
