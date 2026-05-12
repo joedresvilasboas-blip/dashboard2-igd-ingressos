@@ -234,6 +234,50 @@ router.get('/estrelas', async (req, res) => {
       if (o[a.nivel] !== o[b.nivel]) return o[a.nivel] - o[b.nivel];
       return b.estrelas - a.estrelas;
     });
+
+    // Atualiza nivel na planilha quando houver promoção
+    const promoções = vendedores.filter(v => {
+      const vend = vends.find(x => x.codigo === v.codigo);
+      return vend && vend.nivel !== v.nivel &&
+        // Só promove, nunca rebaixa
+        (v.nivel === 'SENIOR' || (v.nivel === 'PLENO' && vend.nivel === 'JUNIOR'));
+    });
+
+    if (promoções.length) {
+      const { del } = require('./cache');
+      const sheetsModule = require('./sheets');
+      const { google } = require('googleapis');
+      const auth = new google.auth.JWT(
+        process.env.GOOGLE_CLIENT_EMAIL, null,
+        (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+        ['https://www.googleapis.com/auth/spreadsheets']
+      );
+      const api = google.sheets({ version: 'v4', auth });
+
+      // Lê aba VENDEDORES para encontrar linha de cada vendedor
+      const rowsVend = await lerAba(ABA.VENDEDORES);
+      const data = [];
+      promoções.forEach(p => {
+        const linhaPlan = rowsVend.findIndex(r => String(r[0]||'').trim() === p.codigo);
+        if (linhaPlan < 1) return; // não encontrou ou é cabeçalho
+        console.log(`[ESTRELAS] Promovendo ${p.codigo} ${p.nome}: ${vends.find(x=>x.codigo===p.codigo)?.nivel} → ${p.nivel}`);
+        data.push({ range: `${ABA.VENDEDORES}!E${linhaPlan + 1}`, values: [[p.nivel]] });
+      });
+
+      if (data.length) {
+        await api.spreadsheets.values.batchUpdate({
+          spreadsheetId: sheetsModule.SPREADSHEET_ID,
+          requestBody: { valueInputOption: 'USER_ENTERED', data },
+        });
+        del('vendedores');
+        // Atualiza nivel no objeto retornado
+        promoções.forEach(p => {
+          const vend = vends.find(x => x.codigo === p.codigo);
+          if (vend) vend.nivel = p.nivel;
+        });
+      }
+    }
+
     res.json({ vendedores });
   } catch(e) { res.json({ erro: e.message }); }
 });
