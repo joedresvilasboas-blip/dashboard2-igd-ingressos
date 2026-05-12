@@ -46,6 +46,7 @@ const Vendas = {
         ${this._dropdown('vd-f-status', 'Status',    status,  'status')}
         <button class="btn btn-sm btn-secondary" onclick="Vendas._limpar()">Limpar</button>
         <div style="display:flex;gap:var(--s2);margin-left:auto">
+          <button class="btn btn-sm btn-secondary" onclick="Vendas._verificarInconsistencias(this)" title="Identificar vendas com OC e Plano de eventos diferentes">⚠️ Inconsistências</button>
           <button class="btn btn-sm btn-secondary" onclick="Vendas._gerarLinks(this)" title="Popula coluna LINK na planilha">🔗 Links na Planilha</button>
           <button class="btn btn-sm btn-primary" onclick="Vendas._reprocessar(this)">⚡ Reprocessar Tudo</button>
         </div>
@@ -246,6 +247,67 @@ const Vendas = {
     if (p < 1 || p > this._paginas) return;
     this._pagina = p;
     this._buscar();
+  },
+
+  async _verificarInconsistencias(btn) {
+    Utils.btnLoading(btn, true);
+    try {
+      const res = await API.post('verificar_inconsistencias', {});
+      if (res.erro) throw new Error(res.erro);
+
+      let modal = document.getElementById('vd-incons-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'vd-incons-modal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:999;display:flex;align-items:center;justify-content:center;padding:var(--s5)';
+        modal.onclick = e => { if (e.target === modal) modal.remove(); };
+        document.body.appendChild(modal);
+      }
+
+      const linhas = res.inconsistencias.map(v => `
+        <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:start">
+          <div>
+            <div style="font-size:11px;font-weight:600;color:var(--text)">${v.nomeVend} <span style="color:var(--text-3);font-weight:400">${v.codVend}</span></div>
+            <div style="font-size:10px;color:var(--text-3);margin-top:2px">${v.dtPag||'—'}</div>
+            <div style="font-size:10px;color:var(--text-3);margin-top:2px">OC: ${v.oc}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text-3);margin-bottom:2px">Evento pelo Plano:</div>
+            <div style="font-size:11px;color:#ff9800;font-weight:600">${v.eventoPlano}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text-3);margin-bottom:2px">Evento pela OC:</div>
+            <div style="font-size:11px;color:#5d9ee8;font-weight:600">${v.eventoOC}</div>
+          </div>
+          <div>
+            ${v.link ? `<a href="${v.link}" target="_blank" class="btn btn-sm btn-secondary" style="font-size:11px;text-decoration:none">🔗 Central</a>` : ''}
+          </div>
+        </div>`).join('');
+
+      modal.innerHTML = `
+        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r3);width:100%;max-width:780px;max-height:85vh;display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:var(--s4) var(--s5);border-bottom:1px solid var(--border);flex-shrink:0">
+            <div>
+              <div style="font-size:14px;font-weight:700;color:var(--text)">⚠️ Inconsistências OC vs Plano</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:2px">${res.total} venda${res.total !== 1 ? 's' : ''} com evento divergente</div>
+            </div>
+            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('vd-incons-modal').remove()">✕</button>
+          </div>
+          ${res.total === 0
+            ? '<div style="padding:40px;text-align:center;color:var(--green);font-size:14px">✓ Nenhuma inconsistência encontrada!</div>'
+            : `<div style="background:var(--bg-3);padding:8px 12px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;flex-shrink:0">
+                <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;font-weight:600">Vendedor</div>
+                <div style="font-size:10px;color:#ff9800;text-transform:uppercase;font-weight:600">Evento (Plano)</div>
+                <div style="font-size:10px;color:#5d9ee8;text-transform:uppercase;font-weight:600">Evento (OC)</div>
+                <div></div>
+              </div>
+              <div style="overflow-y:auto;flex:1">${linhas}</div>`}
+        </div>`;
+      modal.style.display = 'flex';
+    } catch(e) {
+      Utils.toast('Erro: ' + e.message, 'error');
+    }
+    Utils.btnLoading(btn, false);
   },
 
   async _gerarLinks(btn) {
