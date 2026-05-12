@@ -898,65 +898,251 @@ const CadCanais = {
 
 // ===== OCs / PLANOS — OPERAÇÕES EM MASSA =====
 const CadOCs = {
+  _grupos: [],
+  _eventos: [],
+  _selecionados: new Set(),
+
   async abrir() {
     const m = document.createElement('div');
     m.className = 'modal-overlay';
     m.id = 'modal-ocs';
     m.innerHTML = `
-      <div class="modal" style="max-height:92vh;display:flex;flex-direction:column">
+      <div class="modal" style="max-height:92vh;display:flex;flex-direction:column;max-width:680px">
         <div class="modal-handle"></div>
-        <div class="flex items-center justify-between" style="margin-bottom:var(--s4);flex-shrink:0">
+        <div class="flex items-center justify-between" style="margin-bottom:var(--s3);flex-shrink:0">
           <div class="modal-title">OCs &amp; Planos</div>
-          <button class="btn btn-sm btn-secondary" onclick="document.getElementById('modal-ocs').remove()">✕</button>
+          <div style="display:flex;gap:var(--s2)">
+            <button class="btn btn-sm btn-secondary" onclick="CadOCs.abrirRevisao()" title="Revisar e mover OCs entre eventos">🔍 Revisar OCs</button>
+            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('modal-ocs').remove()">✕</button>
+          </div>
         </div>
-        <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s5);flex-shrink:0">
+        <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4);flex-shrink:0">
           Operações em massa para todos os eventos. Use com cautela — atualiza a planilha inteira.
         </div>
 
-        <div class="card card-sm" style="margin-bottom:var(--s3);border-color:var(--accent)">
-          <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:var(--s2)">⚡ Reprocessar Tudo</div>
-          <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
-            Atualiza Canal, Canal Macro, Categoria, Evento, Pontos, Semana e Mês em todas as vendas de uma só vez.
+        <div style="overflow-y:auto;flex:1">
+          <div class="card card-sm" style="margin-bottom:var(--s3);border-color:var(--accent)">
+            <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:var(--s2)">⚡ Reprocessar Tudo</div>
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
+              Atualiza Canal, Canal Macro, Categoria, Evento, Pontos, Semana e Mês em todas as vendas de uma só vez.
+            </div>
+            <button class="btn btn-primary btn-full" id="btn-rep-tudo" onclick="CadOCs.reprocessarTudo()">⚡ Reprocessar Tudo</button>
+            <div id="res-tudo" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
           </div>
-          <button class="btn btn-primary btn-full" id="btn-rep-tudo" onclick="CadOCs.reprocessarTudo()">⚡ Reprocessar Tudo</button>
-          <div id="res-tudo" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
-        </div>
 
-        <div class="card card-sm" style="margin-bottom:var(--s3)">
-          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:var(--s2)">↺ Reprocessar Canais</div>
-          <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
-            Relê as Regras de Canal e atualiza o Sub-canal e Canal Macro de todas as OCs e todas as vendas da planilha.
+          <div class="card card-sm" style="margin-bottom:var(--s3)">
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:var(--s2)">↺ Reprocessar Canais</div>
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
+              Relê as Regras de Canal e atualiza o Sub-canal e Canal Macro de todas as OCs e todas as vendas da planilha.
+            </div>
+            <button class="btn btn-primary btn-full" id="btn-rep-canais" onclick="CadOCs.reprocessarCanais()">
+              Reprocessar Todos os Canais
+            </button>
+            <div id="res-canais" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
           </div>
-          <button class="btn btn-primary btn-full" id="btn-rep-canais" onclick="CadOCs.reprocessarCanais()">
-            Reprocessar Todos os Canais
-          </button>
-          <div id="res-canais" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
-        </div>
 
-        <div class="card card-sm" style="margin-bottom:var(--s3)">
-          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:var(--s2)">↺ Reprocessar Categorias</div>
-          <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
-            Relê o Plano de cada venda e atualiza a coluna CATEGORIA (NORMAL, VIP, ESSENTIAL, UPGRADE) em toda a planilha.
+          <div class="card card-sm" style="margin-bottom:var(--s3)">
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:var(--s2)">↺ Reprocessar Categorias</div>
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
+              Relê o Plano de cada venda e atualiza a coluna CATEGORIA (NORMAL, VIP, ESSENTIAL, UPGRADE) em toda a planilha.
+            </div>
+            <button class="btn btn-primary btn-full" id="btn-rep-cats" onclick="CadOCs.reprocessarCategorias()">
+              Reprocessar Todas as Categorias
+            </button>
+            <div id="res-cats" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
           </div>
-          <button class="btn btn-primary btn-full" id="btn-rep-cats" onclick="CadOCs.reprocessarCategorias()">
-            Reprocessar Todas as Categorias
-          </button>
-          <div id="res-cats" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
-        </div>
 
-        <div class="card card-sm" style="margin-bottom:var(--s3);border-color:#e85d5d">
-          <div style="font-size:13px;font-weight:600;color:#e85d5d;margin-bottom:var(--s2)">🧹 Remover Duplicatas</div>
-          <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
-            Remove vendas com ID duplicado, mantendo somente a primeira ocorrência de cada venda.
+          <div class="card card-sm" style="margin-bottom:var(--s3);border-color:#e85d5d">
+            <div style="font-size:13px;font-weight:600;color:#e85d5d;margin-bottom:var(--s2)">🧹 Remover Duplicatas</div>
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
+              Remove vendas com ID duplicado, mantendo somente a primeira ocorrência de cada venda.
+            </div>
+            <button class="btn btn-full" id="btn-rem-dup" style="background:#e85d5d;color:#fff;border:none" onclick="CadOCs.removerDuplicatas()">
+              🧹 Remover Duplicatas
+            </button>
+            <div id="res-dup" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
           </div>
-          <button class="btn btn-full" id="btn-rem-dup" style="background:#e85d5d;color:#fff;border:none" onclick="CadOCs.removerDuplicatas()">
-            🧹 Remover Duplicatas
-          </button>
-          <div id="res-dup" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
         </div>
       </div>`;
     m.addEventListener('click', e => { if (e.target === m) m.remove(); });
     document.body.appendChild(m);
+  },
+
+  async abrirRevisao() {
+    const m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'modal-revisao-ocs';
+    m.innerHTML = `
+      <div class="modal" style="max-height:95vh;display:flex;flex-direction:column;max-width:800px;width:100%">
+        <div class="modal-handle"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3);flex-shrink:0">
+          <div class="modal-title">🔍 Revisar OCs & Planos</div>
+          <button class="btn btn-sm btn-secondary" onclick="document.getElementById('modal-revisao-ocs').remove()">✕</button>
+        </div>
+        <div id="revisao-filtros" style="display:flex;gap:var(--s2);margin-bottom:var(--s3);flex-shrink:0;flex-wrap:wrap">
+          <input id="revisao-busca" type="text" class="input" placeholder="Buscar OC ou Plano..." style="flex:1;min-width:180px"
+            oninput="CadOCs._renderRevisao()">
+          <select id="revisao-evento" class="input select" style="min-width:180px" onchange="CadOCs._renderRevisao()">
+            <option value="">Todos os eventos</option>
+          </select>
+        </div>
+        <div id="revisao-acoes" style="display:none;align-items:center;gap:var(--s2);margin-bottom:var(--s3);
+          padding:var(--s3);background:var(--accent-dim);border-radius:var(--r2);flex-shrink:0">
+          <span id="revisao-sel-count" style="font-size:12px;color:var(--accent);font-weight:600"></span>
+          <span style="font-size:12px;color:var(--text-3)">selecionadas — Mover para:</span>
+          <select id="revisao-destino" class="input select" style="flex:1;min-width:160px">
+            <option value="">Selecione o evento...</option>
+          </select>
+          <button class="btn btn-sm btn-primary" onclick="CadOCs._moverSelecionadas(this)">Mover</button>
+          <button class="btn btn-sm btn-secondary" onclick="CadOCs._limparSelecao()">✕</button>
+        </div>
+        <div id="revisao-lista" style="overflow-y:auto;flex:1">
+          <div class="spinner" style="margin:40px auto"></div>
+        </div>
+      </div>`;
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    document.body.appendChild(m);
+    await this._carregarRevisao();
+  },
+
+  async _carregarRevisao() {
+    try {
+      const d = await API.get('listar_ocs_planos');
+      this._grupos     = d.grupos  || [];
+      this._eventos    = d.eventos || [];
+      this._selecionados = new Set();
+
+      // Popula selects de evento
+      const optsEvento = this._eventos.map(e => `<option value="${e.codigo}">${e.nome}</option>`).join('');
+      const selFiltro  = document.getElementById('revisao-evento');
+      const selDestino = document.getElementById('revisao-destino');
+      if (selFiltro)  selFiltro.innerHTML  = '<option value="">Todos os eventos</option>' + optsEvento;
+      if (selDestino) selDestino.innerHTML = '<option value="">Selecione o evento...</option>' + optsEvento;
+
+      this._renderRevisao();
+    } catch(e) {
+      const el = document.getElementById('revisao-lista');
+      if (el) el.innerHTML = `<div class="empty"><div class="empty-title">Erro ao carregar</div><div class="empty-sub">${e.message}</div></div>`;
+    }
+  },
+
+  _renderRevisao() {
+    const el     = document.getElementById('revisao-lista');
+    if (!el) return;
+    const busca  = (document.getElementById('revisao-busca')?.value || '').toLowerCase();
+    const evFilt = document.getElementById('revisao-evento')?.value || '';
+
+    let grupos = this._grupos;
+    if (evFilt) grupos = grupos.filter(g => g.eventoCod === evFilt);
+
+    const html = grupos.map(g => {
+      const itens = g.itens.filter(i =>
+        !busca || i.oc.toLowerCase().includes(busca) || (i.plano||'').toLowerCase().includes(busca)
+      );
+      if (!itens.length) return '';
+
+      const linhas = itens.map(i => {
+        const key = i.oc;
+        const sel = this._selecionados.has(key);
+        return `<div style="display:grid;grid-template-columns:28px 1fr 1fr 80px 50px;gap:6px;
+          align-items:center;padding:6px 10px;border-bottom:1px solid var(--border);
+          background:${sel?'var(--accent-dim)':''}">
+          <input type="checkbox" ${sel?'checked':''} style="accent-color:var(--accent);width:14px;height:14px"
+            onchange="CadOCs._toggleSelecao('${key.replace(/'/g,"\'")}',this.checked)">
+          <div style="font-size:11px;color:var(--text);font-weight:500;word-break:break-all">${i.oc}</div>
+          <div style="font-size:10px;color:var(--text-3);word-break:break-all">${i.plano||'—'}</div>
+          <div style="font-size:10px;color:var(--text-3)">${i.canal||'—'}</div>
+          <div style="font-size:10px;font-weight:600;color:var(--accent)">${i.canalMacro||'—'}</div>
+        </div>`;
+      }).join('');
+
+      if (!linhas) return '';
+      return `
+        <div style="margin-bottom:var(--s3)">
+          <div style="display:flex;align-items:center;justify-content:space-between;
+            padding:6px 10px;background:var(--bg-3);border-radius:var(--r2) var(--r2) 0 0;
+            border:1px solid var(--border);border-bottom:none">
+            <div>
+              <span style="font-size:12px;font-weight:700;color:var(--text)">${g.eventoNome}</span>
+              <span style="font-size:10px;color:var(--text-3);margin-left:8px">${itens.length} OCs</span>
+            </div>
+            <button onclick="CadOCs._selecionarGrupo('${g.eventoCod}',this)"
+              style="font-size:10px;color:var(--accent);background:none;border:none;cursor:pointer">
+              Selecionar todas
+            </button>
+          </div>
+          <div style="border:1px solid var(--border);border-radius:0 0 var(--r2) var(--r2);overflow:hidden">
+            <div style="display:grid;grid-template-columns:28px 1fr 1fr 80px 50px;gap:6px;
+              padding:5px 10px;background:var(--bg-3);border-bottom:1px solid var(--border)">
+              <div></div>
+              <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">OC</div>
+              <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">Plano</div>
+              <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">Canal</div>
+              <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">Macro</div>
+            </div>
+            ${linhas}
+          </div>
+        </div>`;
+    }).join('');
+
+    el.innerHTML = html || '<div class="empty"><div class="empty-title">Nenhuma OC encontrada</div></div>';
+  },
+
+  _toggleSelecao(oc, checked) {
+    if (checked) this._selecionados.add(oc);
+    else this._selecionados.delete(oc);
+    this._atualizarAcoes();
+  },
+
+  _selecionarGrupo(eventoCod, btn) {
+    const grupo = this._grupos.find(g => g.eventoCod === eventoCod);
+    if (!grupo) return;
+    const todasSel = grupo.itens.every(i => this._selecionados.has(i.oc));
+    grupo.itens.forEach(i => {
+      if (todasSel) this._selecionados.delete(i.oc);
+      else this._selecionados.add(i.oc);
+    });
+    btn.textContent = todasSel ? 'Selecionar todas' : 'Desmarcar todas';
+    this._renderRevisao();
+    this._atualizarAcoes();
+  },
+
+  _limparSelecao() {
+    this._selecionados.clear();
+    this._renderRevisao();
+    this._atualizarAcoes();
+  },
+
+  _atualizarAcoes() {
+    const el = document.getElementById('revisao-acoes');
+    const ct = document.getElementById('revisao-sel-count');
+    if (!el) return;
+    const n = this._selecionados.size;
+    el.style.display = n > 0 ? 'flex' : 'none';
+    if (ct) ct.textContent = `${n} OC${n !== 1 ? 's' : ''}`;
+  },
+
+  async _moverSelecionadas(btn) {
+    const destino = document.getElementById('revisao-destino')?.value;
+    if (!destino) { Utils.toast('Selecione o evento de destino', 'error'); return; }
+    if (!this._selecionados.size) return;
+    const nomeDestino = this._eventos.find(e => e.codigo === destino)?.nome || destino;
+    if (!confirm(`Mover ${this._selecionados.size} OC(s) para "${nomeDestino}"?`)) return;
+
+    Utils.btnLoading(btn, true);
+    try {
+      const res = await API.post('mover_ocs_evento', {
+        ocs: [...this._selecionados],
+        novoEventoCod: destino,
+      });
+      if (res.erro) throw new Error(res.erro);
+      Utils.toast(`✓ ${res.atualizadas} OC(s) movidas para ${nomeDestino}!`, 'success');
+      this._selecionados.clear();
+      await this._carregarRevisao();
+    } catch(e) {
+      Utils.toast('Erro: ' + e.message, 'error');
+    }
+    Utils.btnLoading(btn, false);
   },
 
   async removerDuplicatas() {
