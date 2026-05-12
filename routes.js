@@ -2016,6 +2016,48 @@ router.post('/verificar_inconsistencias', async (req, res) => {
   } catch(e) { res.json({ erro: e.message }); }
 });
 
+// ====================================================
+// EDITAR CAMPO DE VENDA — atualiza OC ou Plano na planilha VENDAS
+// ====================================================
+router.post('/editar_venda_campo', async (req, res) => {
+  try {
+    const { linha, campo, valor } = req.body;
+    if (!linha || !campo || valor === undefined) return res.json({ erro: 'Parâmetros inválidos' });
+
+    const colMap = await getColMap();
+    const camposPermitidos = { OC: V_NOMES['OC'], PLANO: V_NOMES['PLANO'] };
+    const nomeCol = camposPermitidos[campo.toUpperCase()];
+    if (!nomeCol) return res.json({ erro: 'Campo não permitido' });
+
+    const idxCol = colMap[nomeCol];
+    if (idxCol === undefined) return res.json({ erro: 'Coluna não encontrada' });
+
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    const api = google.sheets({ version: 'v4', auth });
+
+    const colLetra = n => n < 26
+      ? String.fromCharCode(65 + n)
+      : String.fromCharCode(64 + Math.floor(n/26)) + String.fromCharCode(65 + (n%26));
+
+    await api.spreadsheets.values.update({
+      spreadsheetId: sheetsModule.SPREADSHEET_ID,
+      range: `${ABA.VENDAS}!${colLetra(idxCol)}${linha}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[valor]] },
+    });
+
+    const { del } = require('./cache');
+    del('vendas_rows');
+    res.json({ ok: true });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
 const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/salvar_ocs_lote','/salvar_planos_lote','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
 rotasOk.forEach(rota => { router.post(rota, (req, res) => res.json({ ok:true })); router.get(rota, (req, res) => res.json({ ok:true })); });
 
