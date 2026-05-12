@@ -406,8 +406,6 @@ router.get('/relatorio_diario', async (req, res) => {
     dados.forEach(row => {
       const canal = String(vRow(row,colMap,'CANAL')||'').trim();
       if (canal !== 'VA SALES' && canal !== 'RC SALES') return;
-      const status = String(vRow(row,colMap,'STATUS')||'').trim().toUpperCase();
-      if (status === 'CANCELADO') return;
       const ev = String(vRow(row,colMap,'EVENTO')||'').trim();
       if (!ev || !mapaEventosFuturos.hasOwnProperty(ev)) return;
       const hc  = parseFloat(vRow(row,colMap,'HC')) || 0;
@@ -1815,6 +1813,100 @@ router.post('/gerar_links', async (req, res) => {
 
     del('vendas_rows');
     res.json({ ok: true, atualizados: data.length });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// RELATÓRIO DINÂMICO — gerado com base nos filtros do dashboard
+// ====================================================
+router.post('/relatorio_dinamico', async (req, res) => {
+  try {
+    const { filtros = {} } = req.body;
+    const colMap      = await getColMap();
+    const dados       = await getVendasRows();
+    const eventosInfo = await getEventos();
+    const sems        = await getCalendario();
+
+    const mapaData = {};
+    eventosInfo.forEach(e => { mapaData[e.nome] = e.dtEvento || '9999-99-99'; });
+
+    const match = (filtro, valor) => !filtro || filtro.length === 0 || filtro.includes(valor);
+
+    const bloco = () => ({ totalVendas:0,totalHC:0,totalValor:0,normalVendas:0,normalHC:0,vipVendas:0,vipHC:0,upgradeVendas:0,upgradeHC:0,cancelVendas:0,cancelHC:0 });
+    const acumular = (obj, hc, val, cat, isCancel) => {
+      obj.totalVendas++; obj.totalHC += hc; obj.totalValor += val;
+      if (cat === 'NORMAL' || cat === 'ESSENTIAL') { obj.normalVendas++; obj.normalHC += hc; }
+      else if (cat === 'VIP') { obj.vipVendas++; obj.vipHC += hc; }
+      else if (cat.includes('UPGRADE')) { obj.upgradeVendas++; obj.upgradeHC += hc; }
+      if (isCancel) { obj.cancelVendas++; obj.cancelHC += hc; }
+    };
+
+    const total = bloco(), eventos = {}, canaisMap = {};
+    dados.forEach(row => {
+      const canal      = String(vRow(row,colMap,'CANAL')      ||'').trim();
+      const canalMacro = String(vRow(row,colMap,'CANAL_MACRO')||'').trim();
+      const ev         = String(vRow(row,colMap,'EVENTO')     ||'').trim() || 'Sem evento';
+      const mes        = String(vRow(row,colMap,'MES')        ||'').trim();
+      const semana     = String(vRow(row,colMap,'SEMANA')     ||'').trim();
+      const cat        = String(vRow(row,colMap,'CATEGORIA')  ||'').trim().toUpperCase();
+      const status     = String(vRow(row,colMap,'STATUS')     ||'').trim().toUpperCase();
+
+      if (!match(filtros.mes,        mes))        return;
+      if (!match(filtros.semana,     semana))      return;
+      if (!match(filtros.canal,      canal))       return;
+      if (!match(filtros.canalMacro, canalMacro))  return;
+      if (!match(filtros.evento,     ev))          return;
+      if (!match(filtros.categoria,  cat))         return;
+      if (!match(filtros.status,     status))      return;
+
+      const hc  = parseFloat(vRow(row,colMap,'HC')) || 0;
+      const val = parseFloat(String(vRow(row,colMap,'VALOR')||'0').replace('R$','').replace(/[\s.]/g,'').replace(',','.')) || 0;
+      const isCancel = status === 'CANCELADO';
+
+      if (!eventos[ev]) { eventos[ev] = bloco(); eventos[ev].nome = ev; }
+      acumular(total, hc, val, cat, isCancel);
+      acumular(eventos[ev], hc, val, cat, isCancel);
+      canaisMap[canal] = (canaisMap[canal] || 0) + hc;
+    });
+
+    // Monta label do período
+    let labelPeriodo = 'Todos os períodos';
+    if (filtros.semana && filtros.semana.length === 1) {
+      const sem = sems.find(s => String(s.num) === String(filtros.semana[0]));
+      if (sem) labelPeriodo = `Semana ${sem.num} · ${sem.label}`;
+    } else if (filtros.mes && filtros.mes.length > 0) {
+      labelPeriodo = filtros.mes.join(', ');
+    }
+
+    const blocoTexto = (b, titulo) => [
+      titulo, '——————————————',
+      `> • *Vendas:* ${b.totalVendas} | *Headcounts:* ${b.totalHC} | *Faturamento:* ${fmtMoeda(b.totalValor)}`,
+      `> • Normal: ${b.normalVendas} Vendas | ${b.normalHC} HCs`,
+      `> • VIP: ${b.vipVendas} Vendas | ${b.vipHC} HCs`,
+      `> • Upgrade: ${b.upgradeVendas} Vendas | ${b.upgradeHC} HCs`,
+      `> ❌ Cancelamentos: ${b.cancelVendas} Vendas | ${b.cancelHC} HCs`,
+    ].join('\n');
+
+    const canaisTexto = Object.entries(canaisMap)
+      .sort((a,b) => b[1]-a[1])
+      .map(([c,hc]) => `> • ${c}: ${hc} HCs`)
+      .join('\n');
+
+    const ordenados = Object.values(eventos).sort((a,b) => {
+      const da = mapaData[a.nome]||'9999-99-99', db = mapaData[b.nome]||'9999-99-99';
+      return da < db ? -1 : da > db ? 1 : 0;
+    });
+
+    const linhas = [
+      `*REPORT DE VENDAS DE INGRESSOS*`,
+      `📅 ${labelPeriodo}`,
+      '',
+      blocoTexto(total, '📊*TOTAIS:*'),
+    ];
+    if (canaisTexto) { linhas.push(''); linhas.push('📡 *Por Canal:*'); linhas.push(canaisTexto); }
+    ordenados.forEach(ev => { linhas.push(''); linhas.push(blocoTexto(ev, `📍*${ev.nome}*`)); });
+
+    res.json({ ok: true, texto: linhas.join('\n') });
   } catch(e) { res.json({ erro: e.message }); }
 });
 
