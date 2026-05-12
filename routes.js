@@ -1957,6 +1957,72 @@ router.post('/relatorio_dinamico', async (req, res) => {
   } catch(e) { res.json({ erro: e.message }); }
 });
 
+// ====================================================
+// VERIFICAR INCONSISTÊNCIAS — OC e Plano de eventos diferentes
+// ====================================================
+router.post('/verificar_inconsistencias', async (req, res) => {
+  try {
+    const colMap  = await getColMap();
+    const rows    = await getVendasRows();
+    const ocs     = await getOCs();
+    const eventos = await getEventos();
+
+    // Mapa OC → eventoCod e evento nome
+    const mapaOC = {};
+    ocs.forEach(o => {
+      mapaOC[o.oc] = o;
+      mapaOC[o.oc + '|' + o.plano] = o;
+    });
+
+    // Mapa eventoCod → nome
+    const mapaEvento = {};
+    eventos.forEach(e => {
+      mapaEvento[e.codigo] = e.nome;
+      mapaEvento[e.nome]   = e.nome;
+    });
+
+    const inconsistencias = [];
+
+    rows.forEach((row, i) => {
+      const id    = String(vRow(row, colMap, 'ID')       || '').trim();
+      const oc    = String(vRow(row, colMap, 'OC')       || '').trim();
+      const plano = String(vRow(row, colMap, 'PLANO')    || '').trim();
+      const evAtual = String(vRow(row, colMap, 'EVENTO') || '').trim();
+      if (!oc || !plano) return;
+
+      // Evento inferido pelo Plano
+      const evPlano = inferirEvento(plano);
+
+      // Evento vinculado à OC
+      const ocInfo  = mapaOC[oc + '|' + plano] || mapaOC[oc] || {};
+      const evOCCod = ocInfo.eventoCod || '';
+      const evOC    = mapaEvento[evOCCod] || evOCCod || '';
+
+      if (!evPlano || !evOC) return;
+
+      // Compara — normaliza para comparação
+      const norm = s => s.trim().toUpperCase().replace(/\s+/g,' ');
+      if (norm(evPlano) !== norm(evOC)) {
+        inconsistencias.push({
+          linha:    i + 2,
+          id,
+          oc,
+          plano,
+          eventoAtual: evAtual,
+          eventoPlano: evPlano,
+          eventoOC:    evOC,
+          link: id ? `https://central.ignicaodigital.com.br/payment/${id}/details` : '',
+          codVend:  String(vRow(row, colMap, 'COD_VEND')  || '').trim(),
+          nomeVend: String(vRow(row, colMap, 'NOME_VEND') || '').trim(),
+          dtPag:    String(vRow(row, colMap, 'DT_PAG')    || '').trim(),
+        });
+      }
+    });
+
+    res.json({ ok: true, total: inconsistencias.length, inconsistencias });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
 const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/salvar_ocs_lote','/salvar_planos_lote','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
 rotasOk.forEach(rota => { router.post(rota, (req, res) => res.json({ ok:true })); router.get(rota, (req, res) => res.json({ ok:true })); });
 
