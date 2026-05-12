@@ -1959,6 +1959,7 @@ router.post('/relatorio_dinamico', async (req, res) => {
 
 // ====================================================
 // VERIFICAR INCONSISTÊNCIAS — OC e Plano de eventos diferentes
+// Cruza eventoCod da OC vs eventoCod do Plano na aba OCS_PLANOS
 // ====================================================
 router.post('/verificar_inconsistencias', async (req, res) => {
   try {
@@ -1967,19 +1968,17 @@ router.post('/verificar_inconsistencias', async (req, res) => {
     const ocs     = await getOCs();
     const eventos = await getEventos();
 
-    // Mapa OC → eventoCod e evento nome
-    const mapaOC = {};
+    // Mapa separado: OC → eventoCod e Plano → eventoCod
+    const mapaOC    = {}; // oc → eventoCod
+    const mapaPlano = {}; // plano → eventoCod
     ocs.forEach(o => {
-      mapaOC[o.oc] = o;
-      mapaOC[o.oc + '|' + o.plano] = o;
+      if (o.oc)    mapaOC[o.oc.trim()]       = o.eventoCod || '';
+      if (o.plano) mapaPlano[o.plano.trim()]  = o.eventoCod || '';
     });
 
-    // Mapa eventoCod → nome
+    // Mapa eventoCod → nome do evento
     const mapaEvento = {};
-    eventos.forEach(e => {
-      mapaEvento[e.codigo] = e.nome;
-      mapaEvento[e.nome]   = e.nome;
-    });
+    eventos.forEach(e => { mapaEvento[e.codigo] = e.nome; });
 
     const inconsistencias = [];
 
@@ -1987,31 +1986,25 @@ router.post('/verificar_inconsistencias', async (req, res) => {
       const id    = String(vRow(row, colMap, 'ID')       || '').trim();
       const oc    = String(vRow(row, colMap, 'OC')       || '').trim();
       const plano = String(vRow(row, colMap, 'PLANO')    || '').trim();
-      const evAtual = String(vRow(row, colMap, 'EVENTO') || '').trim();
       if (!oc || !plano) return;
 
-      // Evento inferido pelo Plano
-      const evPlano = inferirEvento(plano);
+      const evCodOC    = mapaOC[oc]       || '';
+      const evCodPlano = mapaPlano[plano] || '';
 
-      // Evento vinculado à OC
-      const ocInfo  = mapaOC[oc + '|' + plano] || mapaOC[oc] || {};
-      const evOCCod = ocInfo.eventoCod || '';
-      const evOC    = mapaEvento[evOCCod] || evOCCod || '';
+      // Só verifica se ambos têm evento cadastrado
+      if (!evCodOC || !evCodPlano) return;
 
-      if (!evPlano || !evOC) return;
-
-      // Compara — normaliza para comparação
-      const norm = s => s.trim().toUpperCase().replace(/\s+/g,' ');
-      if (norm(evPlano) !== norm(evOC)) {
+      // Inconsistência: eventos diferentes
+      if (evCodOC !== evCodPlano) {
         inconsistencias.push({
-          linha:    i + 2,
+          linha:      i + 2,
           id,
           oc,
           plano,
-          eventoAtual: evAtual,
-          eventoPlano: evPlano,
-          eventoOC:    evOC,
-          link: id ? `https://central.ignicaodigital.com.br/payment/${id}/details` : '',
+          eventoOC:   mapaEvento[evCodOC]    || evCodOC,
+          eventoPlano: mapaEvento[evCodPlano] || evCodPlano,
+          eventoAtual: String(vRow(row, colMap, 'EVENTO') || '').trim(),
+          link:    id ? `https://central.ignicaodigital.com.br/payment/${id}/details` : '',
           codVend:  String(vRow(row, colMap, 'COD_VEND')  || '').trim(),
           nomeVend: String(vRow(row, colMap, 'NOME_VEND') || '').trim(),
           dtPag:    String(vRow(row, colMap, 'DT_PAG')    || '').trim(),
