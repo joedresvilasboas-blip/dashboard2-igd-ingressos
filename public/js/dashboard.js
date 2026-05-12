@@ -33,6 +33,42 @@ const Dashboard = {
     }
   },
 
+  async gerarRelatorio(btn) {
+    Utils.btnLoading(btn, true);
+    try {
+      const res = await API.post('relatorio_dinamico', { filtros: this.filtros || {} });
+      if (res.erro) throw new Error(res.erro);
+      // Exibe modal com o relatório
+      let modal = document.getElementById('dash-relatorio-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'dash-relatorio-modal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;display:flex;align-items:center;justify-content:center;padding:var(--s5)';
+        modal.onclick = e => { if (e.target === modal) modal.remove(); };
+        document.body.appendChild(modal);
+      }
+      modal.innerHTML = `
+        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r3);width:100%;max-width:560px;max-height:80vh;display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:var(--s4) var(--s5);border-bottom:1px solid var(--border)">
+            <div style="font-size:14px;font-weight:700;color:var(--text)">📋 Relatório</div>
+            <div style="display:flex;gap:var(--s2)">
+              <button class="btn btn-sm btn-primary" onclick="
+                navigator.clipboard.writeText(document.getElementById('dash-rel-texto').textContent)
+                  .then(()=>Utils.toast('Copiado!','success'))">Copiar</button>
+              <button class="btn btn-sm btn-secondary" onclick="document.getElementById('dash-relatorio-modal').remove()">✕</button>
+            </div>
+          </div>
+          <div style="overflow-y:auto;padding:var(--s5)">
+            <pre id="dash-rel-texto" style="font-family:var(--font-mono);font-size:12px;color:var(--text-2);white-space:pre-wrap;line-height:1.7;margin:0">${res.texto}</pre>
+          </div>
+        </div>`;
+      modal.style.display = 'flex';
+    } catch(e) {
+      Utils.toast('Erro: ' + e.message, 'error');
+    }
+    Utils.btnLoading(btn, false);
+  },
+
   toggleFiltros() {
     const el = document.getElementById('dash-filtros');
     if (!el) return;
