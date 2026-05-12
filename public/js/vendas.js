@@ -264,28 +264,41 @@ const Vendas = {
         document.body.appendChild(modal);
       }
 
-      const linhas = res.inconsistencias.map(v => `
-        <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:start">
-          <div>
-            <div style="font-size:11px;font-weight:600;color:var(--text)">${v.nomeVend} <span style="color:var(--text-3);font-weight:400">${v.codVend}</span></div>
-            <div style="font-size:10px;color:var(--text-3);margin-top:2px">${v.dtPag||'—'}</div>
-            <div style="font-size:10px;color:var(--text-3);margin-top:2px">OC: ${v.oc}</div>
+      // Guarda dados para edição
+      Vendas._inconsistencias = res.inconsistencias;
+
+      const renderLinhas = (lista) => lista.map((v, idx) => `
+        <div id="incons-row-${idx}" style="padding:10px 12px;border-bottom:1px solid var(--border)">
+          <!-- Cabeçalho da linha -->
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div>
+              <span style="font-size:12px;font-weight:600;color:var(--text)">${v.nomeVend}</span>
+              <span style="font-size:11px;color:var(--text-3);margin-left:6px">${v.codVend}</span>
+              <span style="font-size:10px;color:var(--text-3);margin-left:8px">${v.dtPag||'—'}</span>
+            </div>
+            ${v.link ? `<a href="${v.link}" target="_blank" class="btn btn-sm btn-secondary" style="font-size:11px;text-decoration:none;flex-shrink:0">🔗 Central</a>` : ''}
           </div>
-          <div>
-            <div style="font-size:10px;color:var(--text-3);margin-bottom:2px">Evento pelo Plano:</div>
-            <div style="font-size:11px;color:#ff9800;font-weight:600">${v.eventoPlano}</div>
-          </div>
-          <div>
-            <div style="font-size:10px;color:var(--text-3);margin-bottom:2px">Evento pela OC:</div>
-            <div style="font-size:11px;color:#5d9ee8;font-weight:600">${v.eventoOC}</div>
-          </div>
-          <div>
-            ${v.link ? `<a href="${v.link}" target="_blank" class="btn btn-sm btn-secondary" style="font-size:11px;text-decoration:none">🔗 Central</a>` : ''}
+          <!-- Campos editáveis -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div style="background:var(--bg-3);border-radius:var(--r2);padding:8px 10px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                <span style="font-size:10px;color:var(--text-3);text-transform:uppercase;font-weight:600">OC → ${v.eventoOC}</span>
+                <button onclick="Vendas._editarCampo(${idx},'OC',this)" style="font-size:10px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0">✏️ Editar</button>
+              </div>
+              <div id="incons-oc-${idx}" style="font-size:12px;color:#5d9ee8;font-weight:600">${v.oc}</div>
+            </div>
+            <div style="background:var(--bg-3);border-radius:var(--r2);padding:8px 10px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                <span style="font-size:10px;color:var(--text-3);text-transform:uppercase;font-weight:600">Plano → ${v.eventoPlano}</span>
+                <button onclick="Vendas._editarCampo(${idx},'PLANO',this)" style="font-size:10px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0">✏️ Editar</button>
+              </div>
+              <div id="incons-plano-${idx}" style="font-size:11px;color:#ff9800;font-weight:600;word-break:break-all">${v.plano}</div>
+            </div>
           </div>
         </div>`).join('');
 
       modal.innerHTML = `
-        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r3);width:100%;max-width:780px;max-height:85vh;display:flex;flex-direction:column">
+        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r3);width:100%;max-width:820px;max-height:85vh;display:flex;flex-direction:column">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:var(--s4) var(--s5);border-bottom:1px solid var(--border);flex-shrink:0">
             <div>
               <div style="font-size:14px;font-weight:700;color:var(--text)">⚠️ Inconsistências OC vs Plano</div>
@@ -295,13 +308,7 @@ const Vendas = {
           </div>
           ${res.total === 0
             ? '<div style="padding:40px;text-align:center;color:var(--green);font-size:14px">✓ Nenhuma inconsistência encontrada!</div>'
-            : `<div style="background:var(--bg-3);padding:8px 12px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;flex-shrink:0">
-                <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;font-weight:600">Vendedor</div>
-                <div style="font-size:10px;color:#ff9800;text-transform:uppercase;font-weight:600">Evento (Plano)</div>
-                <div style="font-size:10px;color:#5d9ee8;text-transform:uppercase;font-weight:600">Evento (OC)</div>
-                <div></div>
-              </div>
-              <div style="overflow-y:auto;flex:1">${linhas}</div>`}
+            : `<div style="overflow-y:auto;flex:1">${renderLinhas(res.inconsistencias)}</div>`}
         </div>`;
       modal.style.display = 'flex';
     } catch(e) {
@@ -320,6 +327,57 @@ const Vendas = {
       Utils.toast('Erro ao gerar links', 'error');
     }
     Utils.btnLoading(btn, false);
+  },
+
+  _editarCampo(idx, campo, btn) {
+    const v = this._inconsistencias[idx];
+    if (!v) return;
+    const elId = `incons-${campo.toLowerCase()}-${idx}`;
+    const el   = document.getElementById(elId);
+    if (!el) return;
+
+    const valorAtual = campo === 'OC' ? v.oc : v.plano;
+    el.innerHTML = `
+      <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
+        <input id="incons-input-${idx}-${campo}" type="text" value="${valorAtual}"
+          style="flex:1;background:var(--bg-2);border:1px solid var(--accent);border-radius:var(--r2);
+          padding:4px 8px;font-size:11px;color:var(--text);outline:none"
+          onkeydown="if(event.key==='Enter') Vendas._salvarCampo(${idx},'${campo}',this.value);
+                     if(event.key==='Escape') Vendas._cancelarEdicao(${idx},'${campo}','${valorAtual}')">
+        <button onclick="Vendas._salvarCampo(${idx},'${campo}',document.getElementById('incons-input-${idx}-${campo}').value)"
+          style="padding:4px 10px;background:var(--accent);border:none;border-radius:var(--r2);color:#000;font-size:11px;font-weight:600;cursor:pointer">✓</button>
+        <button onclick="Vendas._cancelarEdicao(${idx},'${campo}','${valorAtual}')"
+          style="padding:4px 8px;background:var(--bg-3);border:1px solid var(--border);border-radius:var(--r2);color:var(--text-3);font-size:11px;cursor:pointer">✕</button>
+      </div>`;
+    document.getElementById(`incons-input-${idx}-${campo}`)?.focus();
+    btn.style.display = 'none';
+  },
+
+  _cancelarEdicao(idx, campo, valorOriginal) {
+    const elId = `incons-${campo.toLowerCase()}-${idx}`;
+    const el   = document.getElementById(elId);
+    const cor  = campo === 'OC' ? '#5d9ee8' : '#ff9800';
+    if (el) el.innerHTML = `<span style="font-size:${campo==='OC'?'12':'11'}px;color:${cor};font-weight:600;word-break:break-all">${valorOriginal}</span>`;
+    // Reexibe botão editar
+    const row = document.getElementById(`incons-row-${idx}`);
+    if (row) row.querySelectorAll('button').forEach(b => b.style.display = '');
+  },
+
+  async _salvarCampo(idx, campo, novoValor) {
+    const v = this._inconsistencias[idx];
+    if (!v || !novoValor.trim()) return;
+    try {
+      const res = await API.post('editar_venda_campo', { linha: v.linha, campo, valor: novoValor.trim() });
+      if (res.erro) throw new Error(res.erro);
+      // Atualiza localmente
+      if (campo === 'OC') v.oc = novoValor.trim();
+      else v.plano = novoValor.trim();
+      this._cancelarEdicao(idx, campo, novoValor.trim());
+      Utils.toast(`✓ ${campo} atualizado!`, 'success');
+    } catch(e) {
+      Utils.toast('Erro: ' + e.message, 'error');
+      this._cancelarEdicao(idx, campo, campo === 'OC' ? v.oc : v.plano);
+    }
   },
 
   async _reprocessar(btn) {
