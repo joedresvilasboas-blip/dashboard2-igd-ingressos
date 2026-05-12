@@ -918,6 +918,7 @@ router.post('/upload_csv', async (req, res) => {
 
     let importados = 0, atualizados = 0, erros = 0;
     const novasLinhas = [], linhasAtualizar = [];
+    const ocsNaoId = new Set(); // OCs que não têm cadastro
 
     for (const l of linhas) {
       const id = String(l['Id da Central']||'').trim();
@@ -939,6 +940,8 @@ router.post('/upload_csv', async (req, res) => {
 
       const vend     = mapaVend[codVend] || { nome:'⚠️ NÃO CADASTRADO', equipe:'', nivel:'JUNIOR' };
       const ocInfo   = mapaOC[oc+'|'+plano] || mapaOC[oc] || {};
+      // Registra OC sem cadastro (sem canal identificado)
+      if (oc && !ocInfo.canal) ocsNaoId.add(oc);
       const inferido = await inferirCanal(oc, plano);
       const canal    = ocInfo.canal      || inferido.canal;
       const canalMacro = ocInfo.canalMacro || inferido.canalMacro;
@@ -1028,7 +1031,7 @@ router.post('/upload_csv', async (req, res) => {
     }
 
     del('vendas_rows');
-    res.json({ importados, atualizados, erros, ocsNaoId:[], planosNaoId:[], semCanal:[] });
+    res.json({ importados, atualizados, erros, ocsNaoId: [...ocsNaoId], planosNaoId:[], semCanal:[] });
   } catch(e) { res.json({ erro: e.message }); }
 });
 
