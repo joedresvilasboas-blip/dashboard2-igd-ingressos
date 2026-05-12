@@ -2017,6 +2017,127 @@ router.post('/verificar_inconsistencias', async (req, res) => {
 });
 
 // ====================================================
+// LISTAR OCS_PLANOS — retorna todos agrupados por evento
+// ====================================================
+router.get('/listar_ocs_planos', async (req, res) => {
+  try {
+    const ocs     = await getOCs();
+    const eventos = await getEventos();
+
+    const mapaEvento = {};
+    eventos.forEach(e => { mapaEvento[e.codigo] = e.nome; });
+
+    // Agrupa por eventoCod
+    const grupos = {};
+    ocs.forEach(o => {
+      const evCod  = o.eventoCod || '';
+      const evNome = mapaEvento[evCod] || evCod || '(sem evento)';
+      if (!grupos[evCod]) grupos[evCod] = { eventoCod: evCod, eventoNome: evNome, itens: [] };
+      grupos[evCod].itens.push({
+        oc:         o.oc,
+        plano:      o.plano,
+        canal:      o.canal,
+        categoria:  o.categoria,
+        canalMacro: o.canalMacro,
+      });
+    });
+
+    const lista = Object.values(grupos).sort((a,b) => (a.eventoNome||'').localeCompare(b.eventoNome||''));
+    const eventosLista = eventos.map(e => ({ codigo: e.codigo, nome: e.nome }));
+    res.json({ ok: true, grupos: lista, eventos: eventosLista });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// MOVER OCS EM LOTE — move várias OCs para outro evento
+// ====================================================
+router.post('/mover_ocs_evento', async (req, res) => {
+  try {
+    const { ocs: ocsParaMover, novoEventoCod } = req.body;
+    if (!ocsParaMover?.length || !novoEventoCod) return res.json({ erro: 'Parâmetros inválidos' });
+
+    const sheetsModule = require('./sheets');
+    const { google }   = require('googleapis');
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    const api = google.sheets({ version: 'v4', auth });
+
+    const rows   = await lerAba(ABA.OCS);
+    const ocSet  = new Set(ocsParaMover.map(o => o.trim()));
+    const data   = [];
+
+    rows.forEach((r, i) => {
+      if (i === 0) return;
+      if (ocSet.has(String(r[0]||'').trim())) {
+        data.push({ range: `${ABA.OCS}!C${i + 1}`, values: [[novoEventoCod]] });
+      }
+    });
+
+    if (!data.length) return res.json({ erro: 'Nenhuma OC encontrada' });
+
+    const BLOCO = 500;
+    for (let i = 0; i < data.length; i += BLOCO) {
+      await api.spreadsheets.values.batchUpdate({
+        spreadsheetId: sheetsModule.SPREADSHEET_ID,
+        requestBody: { valueInputOption: 'USER_ENTERED', data: data.slice(i, i + BLOCO) },
+      });
+    }
+
+    const { del } = require('./cache');
+    del('ocs');
+    res.json({ ok: true, atualizadas: data.length });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// CORRIGIR OC NO CADASTRO — muda eventoCod de uma OC na aba OCS_PLANOS
+// ====================================================
+router.post('/corrigir_oc_cadastro', async (req, res) => {
+  try {
+    const { oc, novoEventoCod } = req.body;
+    if (!oc || !novoEventoCod) return res.json({ erro: 'Parâmetros inválidos' });
+
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    const api = google.sheets({ version: 'v4', auth });
+
+    // Lê OCS_PLANOS para encontrar a linha da OC
+    const rows = await lerAba(ABA.OCS);
+    // Cabeçalho: OC | PLANO | EVENTO_COD | CANAL | CATEGORIA | CANAL_MACRO
+    const linhasOC = [];
+    rows.forEach((r, i) => {
+      if (i === 0) return; // pula cabeçalho
+      if (String(r[0]||'').trim() === oc.trim()) linhasOC.push(i + 1);
+    });
+
+    if (!linhasOC.length) return res.json({ erro: `OC "${oc}" não encontrada no cadastro` });
+
+    // Atualiza coluna C (eventoCod) em todas as linhas da OC
+    const data = linhasOC.map(linha => ({
+      range: `${ABA.OCS}!C${linha}`,
+      values: [[novoEventoCod]],
+    }));
+
+    await api.spreadsheets.values.batchUpdate({
+      spreadsheetId: sheetsModule.SPREADSHEET_ID,
+      requestBody: { valueInputOption: 'USER_ENTERED', data },
+    });
+
+    const { del } = require('./cache');
+    del('ocs');
+    res.json({ ok: true, atualizadas: linhasOC.length });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
 // EDITAR CAMPO DE VENDA — atualiza OC ou Plano na planilha VENDAS
 // ====================================================
 router.post('/editar_venda_campo', async (req, res) => {
