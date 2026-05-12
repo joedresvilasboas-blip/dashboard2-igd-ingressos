@@ -283,7 +283,10 @@ const Vendas = {
             <div style="background:var(--bg-3);border-radius:var(--r2);padding:8px 10px">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
                 <span style="font-size:10px;color:var(--text-3);text-transform:uppercase;font-weight:600">OC → ${v.eventoOC}</span>
-                <button onclick="Vendas._editarCampo(${idx},'OC',this)" style="font-size:10px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0">✏️ Editar</button>
+                <div style="display:flex;gap:6px">
+                  <button onclick="Vendas._corrigirCadastroOC(${idx},this)" style="font-size:10px;color:#ff9800;background:none;border:none;cursor:pointer;padding:0" title="Corrigir evento da OC no cadastro">🔧 Cadastro</button>
+                  <button onclick="Vendas._editarCampo(${idx},'OC',this)" style="font-size:10px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0">✏️ Venda</button>
+                </div>
               </div>
               <div id="incons-oc-${idx}" style="font-size:12px;color:#5d9ee8;font-weight:600">${v.oc}</div>
             </div>
@@ -327,6 +330,57 @@ const Vendas = {
       Utils.toast('Erro ao gerar links', 'error');
     }
     Utils.btnLoading(btn, false);
+  },
+
+  async _corrigirCadastroOC(idx, btn) {
+    const v = this._inconsistencias[idx];
+    if (!v) return;
+
+    // Mostra opção de qual evento vincular
+    const eventos = App._config?.eventos || [];
+    const opcoesEvento = eventos.length
+      ? eventos.map(e => `<option value="${e.codigo}">${e.nome}</option>`).join('')
+      : `<option value="${v.eventoPlano}">${v.eventoPlano}</option>`;
+
+    const div = document.getElementById(`incons-oc-${idx}`);
+    if (!div) return;
+
+    div.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
+        <div style="font-size:10px;color:var(--text-3)">Mover OC <strong>${v.oc}</strong> para o evento:</div>
+        <select id="incons-ev-sel-${idx}"
+          style="background:var(--bg-2);border:1px solid var(--accent);border-radius:var(--r2);
+          padding:4px 8px;font-size:11px;color:var(--text);outline:none;width:100%">
+          ${opcoesEvento}
+        </select>
+        <div style="display:flex;gap:6px">
+          <button onclick="Vendas._salvarCorrecaoCadastro(${idx})"
+            style="flex:1;padding:5px;background:var(--accent);border:none;border-radius:var(--r2);
+            color:#000;font-size:11px;font-weight:600;cursor:pointer">✓ Corrigir Cadastro</button>
+          <button onclick="Vendas._cancelarEdicao(${idx},'OC','${v.oc}')"
+            style="padding:5px 10px;background:var(--bg-3);border:1px solid var(--border);
+            border-radius:var(--r2);color:var(--text-3);font-size:11px;cursor:pointer">✕</button>
+        </div>
+      </div>`;
+    btn.style.display = 'none';
+  },
+
+  async _salvarCorrecaoCadastro(idx) {
+    const v   = this._inconsistencias[idx];
+    const sel = document.getElementById(`incons-ev-sel-${idx}`);
+    if (!v || !sel) return;
+    const novoEventoCod = sel.value;
+    const nomeEvento    = sel.options[sel.selectedIndex]?.text || novoEventoCod;
+    try {
+      const res = await API.post('corrigir_oc_cadastro', { oc: v.oc, novoEventoCod });
+      if (res.erro) throw new Error(res.erro);
+      v.eventoOC = nomeEvento;
+      this._cancelarEdicao(idx, 'OC', v.oc);
+      Utils.toast(`✓ OC ${v.oc} corrigida no cadastro!`, 'success');
+    } catch(e) {
+      Utils.toast('Erro: ' + e.message, 'error');
+      this._cancelarEdicao(idx, 'OC', v.oc);
+    }
   },
 
   _editarCampo(idx, campo, btn) {
