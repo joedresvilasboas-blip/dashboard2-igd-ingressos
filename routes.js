@@ -2152,7 +2152,10 @@ router.get('/listar_sem_cadastro', async (req, res) => {
     const eventos = await getEventos();
 
     const ocsExist    = new Set(ocs.map(o => o.oc?.trim()).filter(Boolean));
+    // Inclui todos os planos cadastrados (com ou sem OC associada)
     const planosExist = new Set(ocs.map(o => o.plano?.trim()).filter(Boolean));
+    // Também considera OC como plano se não houver plano separado
+    ocs.forEach(o => { if (o.oc) ocsExist.add(o.oc.trim()); });
 
     const ocsSemCad = {}, planosSemCad = {};
     rows.forEach(row => {
@@ -2252,15 +2255,16 @@ router.post('/salvar_planos_lote', async (req, res) => {
     const { eventoCod, planos } = req.body;
     if (!eventoCod || !planos?.length) return res.json({ erro: 'Parâmetros inválidos' });
 
-    const ocsExist = await getOCs();
-    const existentes = new Set(ocsExist.map(o => o.plano?.trim()).filter(Boolean));
+    const { del } = require('./cache');
+    del('ocs'); // invalida antes de ler para ter dados frescos
+    const todasOCs = await getOCs();
+    const existentes = new Set(todasOCs.map(o => o.plano?.trim()).filter(Boolean));
     const novos = planos.filter(p => p && !existentes.has(p.trim()));
 
     if (novos.length) {
       const linhas = novos.map(p => ['', p.trim(), eventoCod, '', inferirCategoria(p), '']);
       await adicionarLinhas(ABA.OCS, linhas);
-      const { del } = require('./cache');
-      del('ocs');
+      del('ocs'); // invalida após salvar
     }
 
     res.json({ ok: true, inseridos: novos.length, ignorados: planos.length - novos.length });
