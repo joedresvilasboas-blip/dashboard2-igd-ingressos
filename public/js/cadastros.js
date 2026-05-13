@@ -1132,6 +1132,7 @@ const CadOCs = {
     const aba    = this._abaVincular;
     const rota   = aba === 'ocs' ? 'salvar_ocs_lote' : 'salvar_planos_lote';
     const campo  = aba === 'ocs' ? 'ocs' : 'planos';
+    const chave  = aba === 'ocs' ? 'oc' : 'plano';
     const nomeEv = document.getElementById('vincular-destino')?.selectedOptions[0]?.text || destino;
 
     Utils.btnLoading(btn, true);
@@ -1140,6 +1141,7 @@ const CadOCs = {
       const res  = await API.post(rota, body);
       if (res.erro) throw new Error(res.erro);
       Utils.toast(`✓ ${res.inseridos} vinculado${res.inseridos !== 1?'s':''} ao evento ${nomeEv}!`, 'success');
+
       this._selVincular = new Set();
       await this._carregarVincular();
     } catch(e) {
