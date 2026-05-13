@@ -1381,89 +1381,62 @@ router.post('/reprocessar_tudo', async (req, res) => {
       evento:     colMap[V_NOMES['EVENTO']],
     };
 
-    const data = [];
+    const exStrD = (val) => {
+      if (!val) return '';
+      const s = String(val).trim();
+      const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+      return '';
+    };
+    const colLetra = n => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26))+String.fromCharCode(65+(n%26));
+
+    // Pré-calcula semana/mês de forma síncrona
+    const smPre = rows.map(row => {
+      const strD = exStrD(row[idx.dtPag]) || exStrD(idx.dtReg !== undefined ? row[idx.dtReg] : '');
+      if (!strD) return ['', ''];
+      const f = sems.find(s => strD >= s.strIni && strD <= s.strFim);
+      return [f ? f.num : '', f ? f.mes : ''];
+    });
+
+    // Acumula valores por coluna
+    const cols = {canal:[], canalMacro:[], categoria:[], pontos:[], hc:[], semana:[], mes:[], evento:[], nomeVend:[], equipe:[]};
+
     for (let i = 0; i < rows.length; i++) {
-      const row     = rows[i];
-      const plano   = String(row[idx.plano]   || '').trim();
-      const oc      = String(row[idx.oc]      || '').trim();
-      const status  = String(row[idx.status]  || '').trim().toUpperCase();
-      const valor   = parseFloat(String(row[idx.valor] || '0').replace('R$','').replace(/\s/g,'').replace(',','.')) || 0;
+      const row    = rows[i];
+      const plano  = String(row[idx.plano] || '').trim();
+      const oc     = String(row[idx.oc]    || '').trim();
+      const ocInfo = mapaOC[oc+'|'+plano] || mapaOC[oc] || {};
+      const inf    = await inferirCanal(oc, plano);
+      const cat    = inferirCategoria(plano);
+      const evInfo = mapaEvento[ocInfo.eventoCod || ''] || {};
+      const vInfo  = mapaVend[String(row[idx.codVend] || '').trim()] || {};
 
-      // Extrai YYYY-MM-DD sem usar Date (evita problema de fuso UTC no Render)
-      const _exStrD = (val) => {
-        if (!val) return '';
-        const s = String(val).trim();
-        const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-        if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
-        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-        return '';
-      };
-      const strDPag = _exStrD(row[idx.dtPag]);
-      const strDReg = idx.dtReg !== undefined ? _exStrD(row[idx.dtReg]) : '';
-      const strDRef = strDPag || strDReg;
-
-      // Semana e mês
-      let semana = '', mes = '';
-      if (strDRef) {
-        sems.forEach(s => { if (strDRef >= s.strIni && strDRef <= s.strFim) { semana = s.num; mes = s.mes; } });
-        if (!semana) console.warn(`[REPROCESSAR] Sem semana para: ${strDRef} (pag: ${row[idx.dtPag]}, reg: ${row[idx.dtReg]})`);
-      }
-
-      // Canal
-      const ocInfo     = mapaOC[oc+'|'+plano] || mapaOC[oc] || {};
-      const inferido   = await inferirCanal(oc, plano);
-      const canal      = ocInfo.canal      || inferido.canal      || String(row[idx.canal]      || '').trim();
-      const canalMacro = ocInfo.canalMacro || inferido.canalMacro || String(row[idx.canalMacro] || '').trim();
-
-      // Categoria e pontos — cancelado mantém pontuação normal
-      const categoria = inferirCategoria(plano);
-      const pontos = categoria === 'UPGRADE' ? 1 : categoria === 'VIP' ? 3 : 2;
-
-      // Evento
-      const evCod  = ocInfo.eventoCod || '';
-      const evInfo = mapaEvento[evCod] || {};
-      const eventoAtual = String(row[idx.evento] || '').trim();
-      const evento = evInfo.nome || evCod || eventoAtual || inferirEvento(plano);
-
-      // Vendedor e equipe — relê da aba VENDEDORES pelo código
-      const codVend  = String(row[idx.codVend] || '').trim();
-      const vendInfo = mapaVend[codVend] || {};
-      const nomeVend = vendInfo.nome   || String(row[idx.nomeVend] || '').trim();
-      const equipe   = vendInfo.equipe || String(row[idx.equipe]   || '').trim();
-
-      const linhaPlan = i + 2;
-      const col = c => {
-        const n = idx[c];
-        if (n === undefined) return null;
-        return n < 26 ? String.fromCharCode(65 + n) : String.fromCharCode(64 + Math.floor(n/26)) + String.fromCharCode(65 + (n%26));
-      };
-
-      const push = (c, v) => { const colLetra = col(c); if (colLetra) data.push({ range: `${ABA.VENDAS}!${colLetra}${linhaPlan}`, values: [[v]] }); };
-
-      // HC — extraído do plano
-      const hc = extrairHC(plano);
-
-      push('canal',      canal);
-      push('canalMacro', canalMacro);
-      push('categoria',  categoria);
-      push('pontos',     pontos);
-      push('hc',         hc);
-      push('semana',     semana);
-      push('mes',        mes);
-      push('evento',     evento);
-      push('nomeVend',   nomeVend);
-      push('equipe',     equipe);
+      cols.canal.push([      ocInfo.canal      || inf.canal      || String(row[idx.canal]      || '').trim() ]);
+      cols.canalMacro.push([ ocInfo.canalMacro || inf.canalMacro || String(row[idx.canalMacro] || '').trim() ]);
+      cols.categoria.push([  cat ]);
+      cols.pontos.push([     cat === 'UPGRADE' ? 1 : cat === 'VIP' ? 3 : 2 ]);
+      cols.hc.push([         extrairHC(plano) ]);
+      cols.semana.push([     smPre[i][0] ]);
+      cols.mes.push([        smPre[i][1] ]);
+      cols.evento.push([     evInfo.nome || ocInfo.eventoCod || String(row[idx.evento] || '').trim() || inferirEvento(plano) ]);
+      cols.nomeVend.push([   vInfo.nome   || String(row[idx.nomeVend] || '').trim() ]);
+      cols.equipe.push([     vInfo.equipe || String(row[idx.equipe]   || '').trim() ]);
     }
 
-    // Processa em blocos com pausa para não estourar cota
-    const BLOCO = 500;
-    for (let i = 0; i < data.length; i += BLOCO) {
-      await api.spreadsheets.values.batchUpdate({
-        spreadsheetId: sheetsModule.SPREADSHEET_ID,
-        requestBody: { valueInputOption: 'USER_ENTERED', data: data.slice(i, i + BLOCO) },
-      });
-      if (i + BLOCO < data.length) await new Promise(r => setTimeout(r, 500));
-    }
+    // Uma única chamada com 10 ranges (uma coluna por campo)
+    const linhaFim = rows.length + 1;
+    const data = Object.entries(cols)
+      .filter(([c]) => idx[c] !== undefined)
+      .map(([c, vals]) => ({
+        range: ABA.VENDAS + '!' + colLetra(idx[c]) + '2:' + colLetra(idx[c]) + linhaFim,
+        values: vals,
+      }));
+
+    await api.spreadsheets.values.batchUpdate({
+      spreadsheetId: sheetsModule.SPREADSHEET_ID,
+      requestBody: { valueInputOption: 'USER_ENTERED', data },
+    });
 
     del('vendas_rows');
     console.log(`[REPROCESSAR] Concluído: ${rows.length} vendas, ${data.length} campos atualizados`);
