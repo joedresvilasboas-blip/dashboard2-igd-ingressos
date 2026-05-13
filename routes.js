@@ -2142,6 +2142,10 @@ router.post('/corrigir_oc_cadastro', async (req, res) => {
 // ====================================================
 router.get('/listar_sem_cadastro', async (req, res) => {
   try {
+    // Invalida cache de OCs para sempre refletir o estado atual da planilha
+    const { del } = require('./cache');
+    del('ocs');
+
     const colMap  = await getColMap();
     const rows    = await getVendasRows();
     const ocs     = await getOCs();
@@ -2263,7 +2267,156 @@ router.post('/salvar_planos_lote', async (req, res) => {
   } catch(e) { res.json({ erro: e.message }); }
 });
 
-const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
+// ====================================================
+// GET OCS EVENTO — retorna OCs e Planos de um evento
+// ====================================================
+router.post('/get_ocs_evento', async (req, res) => {
+  try {
+    const { eventoCod } = req.body;
+    if (!eventoCod) return res.json({ ocs: [], planos: [] });
+    const todas = await getOCs();
+    const ocs    = todas.filter(o => o.eventoCod === eventoCod && o.oc).map(o => ({
+      oc: o.oc, canal: o.canal, categoria: o.categoria, canalMacro: o.canalMacro
+    }));
+    const planos = todas.filter(o => o.eventoCod === eventoCod && o.plano && !o.oc).map(o => ({
+      plano: o.plano, categoria: o.categoria
+    }));
+    res.json({ ok: true, ocs, planos });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// SALVAR OC EVENTO — adiciona/atualiza uma OC num evento
+// ====================================================
+router.post('/salvar_oc_evento', async (req, res) => {
+  try {
+    const { oc, canal, eventoCod, canalMacro } = req.body;
+    if (!oc || !eventoCod) return res.json({ erro: 'Parâmetros inválidos' });
+    const { del } = require('./cache');
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    const api = google.sheets({ version: 'v4', auth });
+    const rows = await lerAba(ABA.OCS);
+    // Procura linha existente
+    let linhaExist = -1;
+    rows.forEach((r, i) => {
+      if (i === 0) return;
+      if (String(r[0]||'').trim() === oc.trim() && String(r[2]||'').trim() === eventoCod) linhaExist = i + 1;
+    });
+    if (linhaExist > 0) {
+      // Atualiza canal
+      await api.spreadsheets.values.update({
+        spreadsheetId: sheetsModule.SPREADSHEET_ID,
+        range: `${ABA.OCS}!D${linhaExist}:F${linhaExist}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [[canal||'', '', canalMacro||'']] },
+      });
+    } else {
+      await adicionarLinhas(ABA.OCS, [[oc, '', eventoCod, canal||'', '', canalMacro||'']]);
+    }
+    del('ocs');
+    res.json({ ok: true });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// SALVAR PLANO EVENTO — adiciona um Plano num evento
+// ====================================================
+router.post('/salvar_plano_evento', async (req, res) => {
+  try {
+    const { plano, eventoCod } = req.body;
+    if (!plano || !eventoCod) return res.json({ erro: 'Parâmetros inválidos' });
+    const { del } = require('./cache');
+    const todas = await getOCs();
+    const existe = todas.find(o => o.plano?.trim() === plano.trim() && o.eventoCod === eventoCod);
+    if (!existe) {
+      await adicionarLinhas(ABA.OCS, [['', plano, eventoCod, '', inferirCategoria(plano), '']]);
+      del('ocs');
+    }
+    res.json({ ok: true });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// DELETAR OC EVENTO — remove uma OC de um evento
+// ====================================================
+router.post('/deletar_oc_evento', async (req, res) => {
+  try {
+    const { oc, eventoCod } = req.body;
+    if (!oc || !eventoCod) return res.json({ erro: 'Parâmetros inválidos' });
+    const { del } = require('./cache');
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    const api = google.sheets({ version: 'v4', auth });
+    const rows = await lerAba(ABA.OCS);
+    const meta = await api.spreadsheets.get({ spreadsheetId: sheetsModule.SPREADSHEET_ID });
+    const sheet = meta.data.sheets.find(s => s.properties.title === ABA.OCS);
+    if (!sheet) return res.json({ erro: 'Aba não encontrada' });
+    const sheetId = sheet.properties.sheetId;
+    const linhas = [];
+    rows.forEach((r, i) => {
+      if (i === 0) return;
+      if (String(r[0]||'').trim() === oc.trim() && String(r[2]||'').trim() === eventoCod) linhas.push(i);
+    });
+    if (!linhas.length) return res.json({ ok: true });
+    linhas.sort((a,b) => b - a);
+    const requests = linhas.map(idx => ({
+      deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 } }
+    }));
+    await api.spreadsheets.batchUpdate({ spreadsheetId: sheetsModule.SPREADSHEET_ID, requestBody: { requests } });
+    del('ocs');
+    res.json({ ok: true });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// DELETAR PLANO EVENTO — remove um Plano de um evento
+// ====================================================
+router.post('/deletar_plano_evento', async (req, res) => {
+  try {
+    const { plano, eventoCod } = req.body;
+    if (!plano || !eventoCod) return res.json({ erro: 'Parâmetros inválidos' });
+    const { del } = require('./cache');
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    const api = google.sheets({ version: 'v4', auth });
+    const rows = await lerAba(ABA.OCS);
+    const meta = await api.spreadsheets.get({ spreadsheetId: sheetsModule.SPREADSHEET_ID });
+    const sheet = meta.data.sheets.find(s => s.properties.title === ABA.OCS);
+    if (!sheet) return res.json({ erro: 'Aba não encontrada' });
+    const sheetId = sheet.properties.sheetId;
+    const linhas = [];
+    rows.forEach((r, i) => {
+      if (i === 0) return;
+      if (String(r[1]||'').trim() === plano.trim() && String(r[2]||'').trim() === eventoCod) linhas.push(i);
+    });
+    if (!linhas.length) return res.json({ ok: true });
+    linhas.sort((a,b) => b - a);
+    const requests = linhas.map(idx => ({
+      deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 } }
+    }));
+    await api.spreadsheets.batchUpdate({ spreadsheetId: sheetsModule.SPREADSHEET_ID, requestBody: { requests } });
+    del('ocs');
+    res.json({ ok: true });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+const rotasOk = ['/salvar_oc','/deletar_oc','/vincular_atualizar','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
 rotasOk.forEach(rota => { router.post(rota, (req, res) => res.json({ ok:true })); router.get(rota, (req, res) => res.json({ ok:true })); });
 
 module.exports = router;
