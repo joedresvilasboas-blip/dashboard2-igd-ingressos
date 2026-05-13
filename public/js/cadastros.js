@@ -593,6 +593,30 @@ const CadEventos = {
     } catch { Utils.toast('Erro ao reprocessar', 'error'); }
   },
 
+  async reprocessarOCsPlanos() {
+    const btn    = document.getElementById('btn-rep-ocs');
+    const res_el = document.getElementById('res-ocs');
+    Utils.btnLoading(btn, true);
+    res_el.textContent = 'Processando...';
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+      const raw = await fetch('/api/reprocessar_ocs_planos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const res = await raw.json();
+      if (res.erro) throw new Error(res.erro);
+      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados} OCs & Planos atualizados!</span>`;
+    } catch(e) {
+      res_el.innerHTML = `<span style="color:var(--red)">Erro: ${e.message}</span>`;
+    }
+    Utils.btnLoading(btn, false);
+  },
+
   async reprocessarCanais() {
     if (!this.eventoAtual) return;
     try {
@@ -929,6 +953,17 @@ const CadOCs = {
             </div>
             <button class="btn btn-primary btn-full" id="btn-rep-tudo" onclick="CadOCs.reprocessarTudo()">⚡ Reprocessar Tudo</button>
             <div id="res-tudo" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
+          </div>
+
+          <div class="card card-sm" style="margin-bottom:var(--s3)">
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:var(--s2)">↺ Reprocessar OCs & Planos</div>
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
+              Atualiza Canal, Categoria e Canal Macro na aba OCS_PLANOS com base nas regras de canal.
+            </div>
+            <button class="btn btn-primary btn-full" id="btn-rep-ocs" onclick="CadOCs.reprocessarOCsPlanos()">
+              ↺ Reprocessar OCs & Planos
+            </button>
+            <div id="res-ocs" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
           </div>
 
           <div class="card card-sm" style="margin-bottom:var(--s3);border-color:#e85d5d">
@@ -1337,7 +1372,31 @@ const CadOCs = {
       clearTimeout(timer);
       const res = await raw.json();
       if (res.erro) throw new Error(res.erro);
-      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados||0} vendas e ${res.atualizadosOCS||0} OCs atualizadas!</span>`;
+      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados||0} vendas atualizadas!</span>`;
+    } catch(e) {
+      res_el.innerHTML = `<span style="color:var(--red)">Erro: ${e.message}</span>`;
+    }
+    Utils.btnLoading(btn, false);
+  },
+
+  async reprocessarOCsPlanos() {
+    const btn    = document.getElementById('btn-rep-ocs');
+    const res_el = document.getElementById('res-ocs');
+    Utils.btnLoading(btn, true);
+    res_el.textContent = 'Processando...';
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+      const raw = await fetch('/api/reprocessar_ocs_planos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const res = await raw.json();
+      if (res.erro) throw new Error(res.erro);
+      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados} OCs & Planos atualizados!</span>`;
     } catch(e) {
       res_el.innerHTML = `<span style="color:var(--red)">Erro: ${e.message}</span>`;
     }
@@ -1366,7 +1425,7 @@ const CadOCs = {
     try {
       const res = await API.reprocessarTodasCategorias();
       if (res.erro) throw new Error(res.erro);
-      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados||0} vendas e ${res.atualizadosOCS||0} OCs atualizadas!</span>`;
+      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados||0} vendas atualizadas!</span>`;
     } catch {
       res_el.innerHTML = `<span style="color:var(--red)">Erro ao reprocessar</span>`;
     }
