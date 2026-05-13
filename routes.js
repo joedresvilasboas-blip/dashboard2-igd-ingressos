@@ -1345,12 +1345,19 @@ router.post('/reprocessar_tudo', async (req, res) => {
     );
     const api = google.sheets({ version: 'v4', auth });
 
+    // Invalida cache do calendário para garantir datas no formato correto
+    del('calendario');
+
     const colMap  = await getColMap();
     const rows    = await getVendasRows();
     const sems    = await getCalendario();
     const ocs     = await getOCs();
     const eventos = await getEventos();
     const vends   = await getVendedores();
+
+    // Verifica formato das datas do calendário
+    console.log('[REPROCESSAR] sems[0]:', JSON.stringify(sems[0]));
+    console.log('[REPROCESSAR] sems[7]:', JSON.stringify(sems[7]));
 
     const mapaOC = {}, mapaEvento = {};
     ocs.forEach(o => { mapaOC[o.oc+'|'+o.plano] = o; mapaOC[o.oc] = o; });
