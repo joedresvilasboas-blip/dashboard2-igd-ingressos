@@ -1453,13 +1453,9 @@ router.post('/reprocessar_tudo', async (req, res) => {
     // Pré-calcula semana/mês para todas as linhas (sem async)
     const semanaMes = rows.map(row => {
       const strDRef = _exStrD(row[idx.dtPag]) || _exStrD(row[idx.dtReg] !== undefined ? row[idx.dtReg] : '');
-      let semana = '', mes = '';
-      if (strDRef) {
-        for (const s of sems) {
-          if (strDRef >= s.strIni && strDRef <= s.strFim) { semana = s.num; mes = s.mes; break; }
-        }
-      }
-      return { semana, mes };
+      if (!strDRef) return { semana: '', mes: '' };
+      const found = sems.find(s => strDRef >= s.strIni && strDRef <= s.strFim);
+      return { semana: found ? found.num : '', mes: found ? found.mes : '' };
     });
 
     // Pré-calcula canais para todas as linhas (com async, mas separado)
