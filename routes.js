@@ -869,7 +869,7 @@ router.post('/upload_csv', async (req, res) => {
     const idsExistentes = {};
     vendasRows.forEach((r, i) => {
       const id = String(r[idCol]||'').trim();
-      if (id) idsExistentes[id] = i + 2; // linha na planilha (1-indexed + header)
+      if (id) idsExistentes[id] = i + 2;
     });
 
     let importados = 0, atualizados = 0, erros = 0;
@@ -947,7 +947,8 @@ router.post('/upload_csv', async (req, res) => {
         console.warn(`[UPLOAD] Primeira semana: ${sems[0]?.strIni} / Última: ${sems[sems.length-1]?.strFim}`);
       }
 
-      const dadosLinha = [id, dtPagSalvar, dtRegSalvar, codVend, vend.nome, vend.equipe, nomeCli, email, fone, plano, oc, evento, canal, canalMacro, categoria, hc, valor, statusFinal, pontos, semana, mes, dtCancel || '', idVenda, cpf];
+      const idLink = '=HYPERLINK("https://central.ignicaodigital.com.br/payment/' + id + '/details","' + id + '")';
+      const dadosLinha = [idLink, dtPagSalvar, dtRegSalvar, codVend, vend.nome, vend.equipe, nomeCli, email, fone, plano, oc, evento, canal, canalMacro, categoria, hc, valor, statusFinal, pontos, semana, mes, dtCancel || '', idVenda, cpf];
 
       if (idsExistentes[id]) {
         linhasAtualizar.push({ linha: idsExistentes[id], dados: dadosLinha });
@@ -1748,23 +1749,23 @@ router.post('/gerar_links', async (req, res) => {
     );
     const api = google.sheets({ version: 'v4', auth });
 
-    const colMap = await getColMap();
-    const rows   = await getVendasRows();
-    const idxID  = colMap[V_NOMES['ID']];
+    resetColMap();
+    const colMap  = await getColMap();
+    const rows    = await getVendasRows();
+    const idxID   = colMap[V_NOMES['ID']];
+    const idxLink = colMap['LINK'];
 
     const colLetra = (n) => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26)) + String.fromCharCode(65+(n%26));
     const colID = colLetra(idxID);
 
-    // Substitui o valor do ID_CENTRAL pela fórmula HYPERLINK
-    const data = rows
-      .map((row, i) => {
-        const id = String(row[idxID] || '').trim();
-        if (!id) return null;
-        const url  = 'https://central.ignicaodigital.com.br/payment/' + id + '/details';
-        const link = '=HYPERLINK("' + url + '","' + id + '")';
-        return { range: `${ABA.VENDAS}!${colID}${i + 2}`, values: [[link]] };
-      })
-      .filter(Boolean);
+    // 1. Converte ID_CENTRAL em HYPERLINK
+    const data = rows.map((row, i) => {
+      const id = String(row[idxID] || '').trim();
+      if (!id) return null;
+      const url  = 'https://central.ignicaodigital.com.br/payment/' + id + '/details';
+      const link = '=HYPERLINK("' + url + '","' + id + '")';
+      return { range: ABA.VENDAS + '!' + colID + (i + 2), values: [[link]] };
+    }).filter(Boolean);
 
     const BLOCO = 1000;
     for (let i = 0; i < data.length; i += BLOCO) {
@@ -1774,7 +1775,20 @@ router.post('/gerar_links', async (req, res) => {
       });
     }
 
+    // 2. Apaga coluna LINK se existir
+    if (idxLink !== undefined) {
+      const meta  = await api.spreadsheets.get({ spreadsheetId: sheetsModule.SPREADSHEET_ID });
+      const sheet = meta.data.sheets.find(s => s.properties.title === ABA.VENDAS);
+      if (sheet) {
+        await api.spreadsheets.batchUpdate({
+          spreadsheetId: sheetsModule.SPREADSHEET_ID,
+          requestBody: { requests: [{ deleteDimension: { range: { sheetId: sheet.properties.sheetId, dimension: 'COLUMNS', startIndex: idxLink, endIndex: idxLink + 1 } } }] }
+        });
+      }
+    }
+
     del('vendas_rows');
+    resetColMap();
     res.json({ ok: true, atualizados: data.length });
   } catch(e) { res.json({ erro: e.message }); }
 });
