@@ -10,8 +10,16 @@ const Time = {
     if (!this._config) {
       try { this._config = await API.getConfig(); } catch {}
     }
+    this._vendedoresExpandidos = new Set();
     this._renderLayout();
     await this._carregarDados();
+
+    // Fecha dropdowns ao clicar fora
+    document.addEventListener('click', e => {
+      if (!e.target.closest('[id^="wrap-tf-"]')) {
+        document.querySelectorAll('[id^="drop-tf-"]').forEach(d => d.style.display = 'none');
+      }
+    });
   },
 
   _renderLayout() {
@@ -43,12 +51,13 @@ const Time = {
         </div>
         <!-- Filtros -->
         <div style="display:flex;gap:8px;padding:0 var(--s5) 10px;flex-wrap:wrap;align-items:flex-end">
-          ${this._selectFiltro('Mês',    'time-f-mes',    '<option value="">Todos</option>' + opMes,    'mes')}
-          ${this._selectFiltro('Semana', 'time-f-sem',    '<option value="">Todas</option>' + opSem,    'semana')}
-          ${this._selectFiltro('Evento', 'time-f-evento', '<option value="">Todos</option>' + opEvento, 'evento')}
-          ${this._selectFiltro('Canal',  'time-f-canal',  '<option value="">Todos</option><option value="VA SALES">VA Sales</option><option value="RC SALES">RC Sales</option>', 'canal')}
-          ${this._selectFiltro('Status', 'time-f-status', '<option value="">Todos</option><option value="PAGO">Pago</option><option value="CANCELADO">Cancelado</option>', 'status')}
-          <button class="btn btn-sm btn-secondary" onclick="Time._limparFiltros()">Limpar</button>
+          ${this._multiDropdown('Mês',       'fmes',    meses.map(m=>m.nome),          'mes')}
+          ${this._multiDropdown('Semana',    'fsem',    sems.map(s=>'Sem '+s.num),     'semana')}
+          ${this._multiDropdown('Evento',    'fevento', eventos,                        'evento')}
+          ${this._multiDropdown('Canal',     'fcanal',  ['VA SALES','RC SALES'],        'canal')}
+          ${this._multiDropdown('Categoria', 'fcat',    ['NORMAL','VIP','ESSENTIAL','UPGRADE'], 'categoria')}
+          ${this._multiDropdown('Status',    'fstatus', ['PAGO','CANCELADO'],           'status')}
+          <button class="btn btn-sm btn-secondary" onclick="Time._limparFiltros()" style="align-self:flex-end">Limpar</button>
         </div>
       </div>
 
@@ -60,47 +69,81 @@ const Time = {
       </div>`;
   },
 
-  _selectFiltro(label, id, opts, chave) {
-    return `<div style="display:flex;flex-direction:column;gap:3px">
+  _multiDropdown(label, id, opcoes, chave) {
+    const sel = this._filtros[chave] || [];
+    const btnLabel = sel.length === 0 ? 'Todos' : sel.length === 1 ? sel[0] : sel.length + ' selecionados';
+    const ativo = sel.length > 0;
+    const opts = opcoes.map(v => `
+      <label style="display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;font-size:12px;
+        color:var(--text);white-space:nowrap;user-select:none"
+        onmouseenter="this.style.background='var(--bg-3)'" onmouseleave="this.style.background=''">
+        <input type="checkbox" value="${v}" ${sel.includes(v)?'checked':''}
+          style="accent-color:var(--accent);width:14px;height:14px"
+          onchange="Time._toggleFiltro('${chave}','${v}',this.checked,'${id}')"> ${v}
+      </label>`).join('');
+    return `<div style="display:flex;flex-direction:column;gap:3px;position:relative" id="wrap-tf-${id}">
       <span style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em">${label}</span>
-      <select id="${id}" class="input select" style="padding:5px 10px;font-size:12px;min-width:110px"
-        onchange="Time._aplicarFiltro('${chave}',this.value)">${opts}</select>
+      <button onclick="Time._toggleDrop('wrap-tf-${id}')"
+        style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 10px;
+        background:var(--bg-3);border:1px solid ${ativo?'var(--accent)':'var(--border-2)'};border-radius:var(--r2);
+        font-size:12px;color:${ativo?'var(--accent)':'var(--text)'};cursor:pointer;min-width:110px" id="btn-tf-${id}">
+        <span id="lbl-tf-${id}">${btnLabel}</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div id="drop-tf-${id}" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;
+        background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r2);
+        min-width:170px;max-height:200px;overflow-y:auto;z-index:200;box-shadow:var(--shadow)">
+        <label style="display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;font-size:12px;
+          color:var(--accent);border-bottom:1px solid var(--border);font-weight:600;user-select:none"
+          onmouseenter="this.style.background='var(--bg-3)'" onmouseleave="this.style.background=''">
+          <input type="checkbox" ${sel.length===0?'checked':''} style="accent-color:var(--accent);width:14px;height:14px"
+            onchange="Time._limparFiltroChave('${chave}','${id}',this.checked)"> Todos
+        </label>
+        ${opts}
+      </div>
     </div>`;
   },
 
-  _aplicarFiltro(chave, valor) {
-    if (chave === 'semana') {
-      // Ao selecionar semana, pega strIni/strFim correspondente
-      this._filtros.semana = valor;
-      const sems = this._config?.semanas || [];
-      const sem  = sems.find(s => String(s.num) === String(valor));
-      this._filtros._strIni = sem?.strIni || '';
-      this._filtros._strFim = sem?.strFim || '';
-    } else if (chave === 'mes') {
-      this._filtros.mes = valor;
-      // Ao selecionar mês, pega strIni/strFim do mês
-      const meses = this._config?.meses || [];
-      const m = meses.find(x => x.nome === valor);
-      if (m) { this._filtros._strIni = m.strIni || ''; this._filtros._strFim = m.strFim || ''; }
-      else { this._filtros._strIni = ''; this._filtros._strFim = ''; }
-    } else {
-      this._filtros[chave] = valor;
-    }
-    // Limpa o outro (mês vs semana)
-    if (chave === 'semana' && valor) { this._filtros.mes = ''; document.getElementById('time-f-mes').value = ''; }
-    if (chave === 'mes'    && valor) { this._filtros.semana = ''; document.getElementById('time-f-sem').value = ''; }
+  _toggleDrop(wrapId) {
+    const wrap = document.getElementById(wrapId);
+    if (!wrap) return;
+    const drop = wrap.querySelector('[id^="drop-tf-"]');
+    const jaAberto = drop.style.display !== 'none';
+    document.querySelectorAll('[id^="drop-tf-"]').forEach(d => d.style.display = 'none');
+    if (!jaAberto) drop.style.display = 'block';
+  },
 
+  _toggleFiltro(chave, valor, checked, id) {
+    if (!Array.isArray(this._filtros[chave])) this._filtros[chave] = [];
+    if (checked) { if (!this._filtros[chave].includes(valor)) this._filtros[chave].push(valor); }
+    else { this._filtros[chave] = this._filtros[chave].filter(v => v !== valor); }
+    this._atualizarBtnFiltro(chave, id);
     this._dados = null;
     this._carregarDados();
   },
 
+  _limparFiltroChave(chave, id, checked) {
+    if (checked) {
+      this._filtros[chave] = [];
+      document.querySelectorAll(`#drop-tf-${id} input[type=checkbox]:not(:first-of-type)`).forEach(cb => cb.checked = false);
+      this._atualizarBtnFiltro(chave, id);
+      this._dados = null;
+      this._carregarDados();
+    }
+  },
+
+  _atualizarBtnFiltro(chave, id) {
+    const sel = this._filtros[chave] || [];
+    const lbl = document.getElementById(`lbl-tf-${id}`);
+    const btn = document.getElementById(`btn-tf-${id}`);
+    if (lbl) lbl.textContent = sel.length === 0 ? 'Todos' : sel.length === 1 ? sel[0] : sel.length + ' selecionados';
+    if (btn) { btn.style.borderColor = sel.length > 0 ? 'var(--accent)' : 'var(--border-2)'; btn.style.color = sel.length > 0 ? 'var(--accent)' : 'var(--text)'; }
+  },
+
   _limparFiltros() {
-    this._filtros = { mes: '', semana: '', evento: '', canal: '', status: '', _strIni: '', _strFim: '' };
-    ['time-f-mes','time-f-sem','time-f-evento','time-f-canal','time-f-status'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.value = '';
-    });
+    this._filtros = { mes: [], semana: [], evento: [], canal: [], status: [], categoria: [], _strIni: '', _strFim: '' };
     this._dados = null;
+    this._renderLayout();
     this._carregarDados();
   },
 
@@ -121,10 +164,17 @@ const Time = {
     if (el) el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:200px"><div class="spinner"></div></div>';
 
     try {
+      const canal     = this._filtros.canal     || [];
+      const evento    = this._filtros.evento    || [];
+      const status    = this._filtros.status    || [];
+      const categoria = this._filtros.categoria || [];
+      const mes       = this._filtros.mes       || [];
+      const semana    = this._filtros.semana    || [];
+
       const [semaforoRes, metaRes, rankingRes] = await Promise.all([
         API.getSemaforo({}),
-        API.getMetaSemanal(strIni, strFim, canal || '', ''),
-        API.post('ranking_time', { strIni, strFim, canal, evento, status }),
+        API.getMetaSemanal(strIni, strFim, canal.length === 1 ? canal[0] : '', ''),
+        API.post('ranking_time', { strIni, strFim, canal, evento, status, categoria, mes, semana }),
       ]);
 
       const semaforo = semaforoRes.semaforo || [];
@@ -408,47 +458,139 @@ const Time = {
           const fat = rv.faturamento || 0;
           const iniciais = (v.apelido||v.nome||'?').split(' ').slice(0,2).map(p=>p[0]).join('').toUpperCase();
 
+          const expandido = this._vendedoresExpandidos?.has(v.codigo);
           return `
-            <div onclick="Vendedor.abrir('${v.codigo}')" style="background:${bg};border:1px solid ${cor}33;border-radius:var(--r3);
-              padding:var(--s4);cursor:pointer;transition:all .2s"
-              onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 16px rgba(0,0,0,.2)'"
-              onmouseleave="this.style.transform='';this.style.boxShadow=''">
-              <!-- Avatar e nome -->
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:var(--s3)">
-                <div style="width:36px;height:36px;border-radius:50%;background:${cor}22;border:2px solid ${cor}66;
-                  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${cor};flex-shrink:0">
-                  ${iniciais}
+            <div id="card-vend-${v.codigo}" style="background:${bg};border:1px solid ${cor}33;border-radius:var(--r3);
+              overflow:hidden;transition:all .2s;grid-column:${expandido?'1/-1':''}">
+              <!-- Cabeçalho clicável -->
+              <div onclick="Time._toggleVendedor('${v.codigo}')"
+                style="padding:var(--s4);cursor:pointer;display:flex;flex-direction:column;gap:var(--s3)">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="width:36px;height:36px;border-radius:50%;background:${cor}22;border:2px solid ${cor}66;
+                    display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${cor};flex-shrink:0">
+                    ${iniciais}
+                  </div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.apelido||v.nome}</div>
+                    <div style="font-size:10px;color:var(--text-3)">${v.nivel||'JUNIOR'} · ${v.codigo}</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="width:8px;height:8px;border-radius:50%;background:${cor};box-shadow:0 0 6px ${cor}"></div>
+                    <div style="font-size:14px;color:var(--text-3);transition:transform .2s;transform:${expandido?'rotate(180deg)':'rotate(0deg)'}" id="chevron-${v.codigo}">▾</div>
+                  </div>
                 </div>
-                <div style="min-width:0">
-                  <div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.apelido||v.nome}</div>
-                  <div style="font-size:10px;color:var(--text-3)">${v.nivel||'JUNIOR'} · ${v.codigo}</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center">
+                  <div>
+                    <div style="font-size:18px;font-weight:800;color:var(--accent)">${hc}</div>
+                    <div style="font-size:9px;color:var(--text-3);text-transform:uppercase">HC</div>
+                  </div>
+                  <div>
+                    <div style="font-size:18px;font-weight:800;color:var(--text)">${vnd}</div>
+                    <div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Vendas</div>
+                  </div>
+                  <div>
+                    <div style="font-size:12px;font-weight:700;color:#4caf50">R$ ${(fat/1000).toFixed(1)}k</div>
+                    <div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Fat.</div>
+                  </div>
                 </div>
-                <div style="width:8px;height:8px;border-radius:50%;background:${cor};box-shadow:0 0 6px ${cor};flex-shrink:0;margin-left:auto"></div>
+                <div style="font-size:11px;font-weight:600;color:${cor};text-align:center">
+                  ${dias === 0 ? '✓ Vendeu hoje' : dias + 'd sem venda'}
+                </div>
               </div>
-
-              <!-- Métricas -->
-              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:var(--s3);text-align:center">
-                <div>
-                  <div style="font-size:18px;font-weight:800;color:var(--accent)">${hc}</div>
-                  <div style="font-size:9px;color:var(--text-3);text-transform:uppercase">HC</div>
+              <!-- Conteúdo expandido -->
+              <div id="expand-${v.codigo}" style="display:${expandido?'block':'none'};border-top:1px solid ${cor}22">
+                <div style="padding:var(--s3);display:flex;align-items:center;justify-content:center">
+                  <div class="spinner"></div>
                 </div>
-                <div>
-                  <div style="font-size:18px;font-weight:800;color:var(--text)">${vnd}</div>
-                  <div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Vendas</div>
-                </div>
-                <div>
-                  <div style="font-size:12px;font-weight:700;color:#4caf50">R$ ${(fat/1000).toFixed(1)}k</div>
-                  <div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Fat.</div>
-                </div>
-              </div>
-
-              <!-- Status -->
-              <div style="font-size:11px;font-weight:600;color:${cor};text-align:center">
-                ${dias === 0 ? '✓ Vendeu hoje' : dias + 'd sem venda'}
               </div>
             </div>`;
         }).join('')}
       </div>`;
+  },
+
+  // ==================== TOGGLE VENDEDOR ====================
+  async _toggleVendedor(codigo) {
+    if (!this._vendedoresExpandidos) this._vendedoresExpandidos = new Set();
+    const expandEl   = document.getElementById('expand-' + codigo);
+    const chevronEl  = document.getElementById('chevron-' + codigo);
+    const cardEl     = document.getElementById('card-vend-' + codigo);
+    if (!expandEl) return;
+
+    const expandido = this._vendedoresExpandidos.has(codigo);
+    if (expandido) {
+      this._vendedoresExpandidos.delete(codigo);
+      expandEl.style.display = 'none';
+      if (chevronEl) chevronEl.style.transform = 'rotate(0deg)';
+      if (cardEl) cardEl.style.gridColumn = '';
+      return;
+    }
+
+    this._vendedoresExpandidos.add(codigo);
+    if (chevronEl) chevronEl.style.transform = 'rotate(180deg)';
+    if (cardEl) cardEl.style.gridColumn = '1/-1';
+    expandEl.style.display = 'block';
+    expandEl.innerHTML = '<div style="padding:var(--s4);display:flex;align-items:center;justify-content:center"><div class="spinner"></div></div>';
+
+    try {
+      const d = await API.getPerfilVendedor(codigo);
+      const v   = d.vendedor || {};
+      const ps  = d.porSemana || [];
+      const cfg = Time._config || {};
+      const cal = (cfg.semanas || []);
+      const hojeS = cfg.hojeStr || '';
+      const semAtual = cal.find(s => hojeS >= s.strIni && hojeS <= s.strFim) || cal[cal.length-1] || {};
+
+      // Filtra semana atual
+      const psSem = semAtual.num ? ps.filter(s => s.semana === semAtual.num) : ps;
+      const t = Vendedor._agregarTotais(psSem);
+      const tGeral = Vendedor._agregarTotais(ps);
+
+      expandEl.innerHTML = `
+        <div style="padding:var(--s4)">
+          <!-- Período -->
+          <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:var(--s3)">
+            Semana atual · ${semAtual.label || '—'}
+          </div>
+
+          <!-- Produção semana -->
+          <div style="display:flex;gap:var(--s3);flex-wrap:wrap;margin-bottom:var(--s4)">
+            ${Vendedor._pill('HC',        t.hc,        'var(--accent)')}
+            ${Vendedor._pill('VA',        t.va,        '#e8b86d')}
+            ${Vendedor._pill('RC',        t.rc,        '#5d9ee8')}
+            ${Vendedor._pill('Upgrades',  t.upgrade,   '#b86de8')}
+            ${t.cancelados > 0 ? Vendedor._pill('Cancelados', t.cancelados, '#e85d5d') : ''}
+          </div>
+
+          <!-- Gráfico evolução -->
+          <div style="margin-bottom:var(--s4)">
+            <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:var(--s2)">Evolução HC por semana</div>
+            ${Vendedor._graficoEvolucao(ps)}
+          </div>
+
+          <!-- Funil -->
+          <div style="margin-bottom:var(--s4)">
+            <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:var(--s2)">Funil de Conversão</div>
+            ${Vendedor._funil(tGeral)}
+          </div>
+
+          <!-- Atividade -->
+          <div style="display:flex;gap:var(--s3);flex-wrap:wrap;margin-bottom:var(--s3)">
+            ${Vendedor._pill('Horas', tGeral.horas,     'var(--text)')}
+            ${Vendedor._pill('HC/h',  tGeral.hcPorHora, Vendedor._corTaxa(tGeral.hcPorHora,1,2))}
+            ${Vendedor._pill('Pace',  tGeral.pace,       'var(--text)')}
+          </div>
+
+          <!-- ROI -->
+          ${Vendedor._blocoROI(v, tGeral, ps)}
+
+          <!-- Botão ver perfil completo -->
+          <div style="margin-top:var(--s3);text-align:center">
+            <button class="btn btn-sm btn-secondary" onclick="Vendedor.abrir('${codigo}')">Ver perfil completo →</button>
+          </div>
+        </div>`;
+    } catch(e) {
+      expandEl.innerHTML = `<div style="padding:var(--s4);color:var(--red);font-size:12px">Erro: ${e.message}</div>`;
+    }
   },
 
   // ==================== HOJE ====================
