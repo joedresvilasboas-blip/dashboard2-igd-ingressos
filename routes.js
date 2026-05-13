@@ -1427,6 +1427,17 @@ router.post('/reprocessar_tudo', async (req, res) => {
       evento:     colMap[V_NOMES['EVENTO']],
     };
 
+    // Log para debug do calendário
+    console.log(`[REPROCESSAR] Calendário: ${sems.length} semanas, primeira: ${sems[0]?.strIni} → ${sems[0]?.strFim}, última: ${sems[sems.length-1]?.strIni} → ${sems[sems.length-1]?.strFim}`);
+    // Log de uma venda de exemplo
+    if (rows.length > 0) {
+      const r0 = rows[0];
+      const dtEx = String(r0[idx.dtPag]||'').trim();
+      const m1ex = dtEx.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      const strEx = m1ex ? `${m1ex[3]}-${m1ex[2].padStart(2,'0')}-${m1ex[1].padStart(2,'0')}` : dtEx.slice(0,10);
+      console.log(`[REPROCESSAR] Exemplo venda[0]: dtPag="${dtEx}" → strD="${strEx}"`);
+    }
+
     const data = [];
     for (let i = 0; i < rows.length; i++) {
       const row     = rows[i];
