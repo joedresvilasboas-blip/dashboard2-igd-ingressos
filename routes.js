@@ -872,6 +872,10 @@ router.post('/upload_csv', async (req, res) => {
       if (id) idsExistentes[id] = i + 2;
     });
 
+    // Lê o colMap atual da planilha para gravar nas colunas certas
+    resetColMap();
+    const uploadColMap = await getColMap();
+
     let importados = 0, atualizados = 0, erros = 0;
     const novasLinhas = [], linhasAtualizar = [];
 
@@ -947,7 +951,38 @@ router.post('/upload_csv', async (req, res) => {
         console.warn(`[UPLOAD] Primeira semana: ${sems[0]?.strIni} / Última: ${sems[sems.length-1]?.strFim}`);
       }
 
-      const dadosLinha = [id, dtPagSalvar, dtRegSalvar, codVend, vend.nome, vend.equipe, nomeCli, email, fone, plano, oc, evento, canal, canalMacro, categoria, hc, valor, statusFinal, pontos, semana, mes, dtCancel || '', idVenda, cpf];
+      // Monta linha respeitando a ordem das colunas do colMap
+      const totalCols = Math.max(...Object.values(uploadColMap)) + 1;
+      const dadosLinha = new Array(totalCols).fill('');
+      const setCol = (chave, valor) => {
+        const nomeCol = V_NOMES[chave];
+        const idx = uploadColMap[nomeCol];
+        if (idx !== undefined) dadosLinha[idx] = valor !== undefined && valor !== null ? valor : '';
+      };
+      setCol('ID',        id);
+      setCol('DT_PAG',    dtPagSalvar);
+      setCol('DT_REG',    dtRegSalvar);
+      setCol('COD_VEND',  codVend);
+      setCol('NOME_VEND', vend.nome);
+      setCol('EQUIPE',    vend.equipe);
+      setCol('NOME_CLI',  nomeCli);
+      setCol('EMAIL',     email);
+      setCol('FONE',      fone);
+      setCol('PLANO',     plano);
+      setCol('OC',        oc);
+      setCol('EVENTO',    evento);
+      setCol('CANAL',     canal);
+      setCol('CANAL_MACRO', canalMacro);
+      setCol('CATEGORIA', categoria);
+      setCol('HC',        hc);
+      setCol('VALOR',     valor);
+      setCol('STATUS',    statusFinal);
+      setCol('PONTOS',    pontos);
+      setCol('SEMANA',    semana);
+      setCol('MES',       mes);
+      setCol('DT_CANCEL', dtCancel || '');
+      setCol('ID_VENDA',  idVenda);
+      setCol('CPF',       cpf);
 
       if (idsExistentes[id]) {
         linhasAtualizar.push({ linha: idsExistentes[id], dados: dadosLinha });
