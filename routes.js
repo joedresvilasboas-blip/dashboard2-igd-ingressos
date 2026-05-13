@@ -1380,10 +1380,6 @@ router.post('/reprocessar_todas_categorias', async (req, res) => {
 // REPROCESSAR TUDO — semana, mês, canal, categoria, pontos, evento
 // ====================================================
 router.post('/reprocessar_tudo', async (req, res) => {
-  // Responde imediatamente e processa em background
-  res.json({ ok: true, msg: 'Processamento iniciado', atualizados: null });
-
-  setImmediate(async () => {
   try {
     const { del } = require('./cache');
     const sheetsModule = require('./sheets');
@@ -1515,19 +1511,21 @@ router.post('/reprocessar_tudo', async (req, res) => {
       push('equipe',     equipe);
     }
 
-    const BLOCO = 500;
+    // Blocos pequenos com pausa para respeitar quota do Sheets
+    const BLOCO = 100;
+    const PAUSA = 2000; // 2s entre blocos
     for (let i = 0; i < data.length; i += BLOCO) {
       await api.spreadsheets.values.batchUpdate({
         spreadsheetId: sheetsModule.SPREADSHEET_ID,
         requestBody: { valueInputOption: 'USER_ENTERED', data: data.slice(i, i + BLOCO) },
       });
-      if (i + BLOCO < data.length) await new Promise(r => setTimeout(r, 500));
+      if (i + BLOCO < data.length) await new Promise(r => setTimeout(r, PAUSA));
     }
 
     del('vendas_rows');
     console.log(`[REPROCESSAR] Concluído: ${rows.length} vendas`);
-  } catch(e) { console.error('[REPROCESSAR] Erro:', e.message); }
-  }); // fim setImmediate
+    res.json({ ok: true, atualizados: rows.length });
+  } catch(e) { res.json({ erro: e.message }); }
 });
 
 // ====================================================

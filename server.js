@@ -45,4 +45,4 @@ const server = app.listen(PORT, () => {
   console.log(`   API:      http://localhost:${PORT}/api`);
 });
 // Timeout de 10 minutos para rotas pesadas (reprocessar_tudo)
-server.timeout = 10 * 60 * 1000;
+server.timeout = 15 * 60 * 1000; // 15 minutos para reprocessar_tudo
