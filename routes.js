@@ -2179,7 +2179,53 @@ router.post('/editar_venda_campo', async (req, res) => {
   } catch(e) { res.json({ erro: e.message }); }
 });
 
-const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/salvar_ocs_lote','/salvar_planos_lote','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
+// ====================================================
+// SALVAR OCs EM LOTE — adiciona várias OCs a um evento
+// ====================================================
+router.post('/salvar_ocs_lote', async (req, res) => {
+  try {
+    const { eventoCod, ocs } = req.body;
+    if (!eventoCod || !ocs?.length) return res.json({ erro: 'Parâmetros inválidos' });
+
+    const ocsExist = await getOCs();
+    const existentes = new Set(ocsExist.map(o => o.oc.trim()));
+    const novas = ocs.filter(oc => oc && !existentes.has(oc.trim()));
+
+    if (novas.length) {
+      const linhas = novas.map(oc => [oc.trim(), '', eventoCod, '', '', '']);
+      await adicionarLinhas(ABA.OCS, linhas);
+      const { del } = require('./cache');
+      del('ocs');
+    }
+
+    res.json({ ok: true, inseridos: novas.length, ignorados: ocs.length - novas.length });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// SALVAR PLANOS EM LOTE — adiciona vários Planos a um evento
+// ====================================================
+router.post('/salvar_planos_lote', async (req, res) => {
+  try {
+    const { eventoCod, planos } = req.body;
+    if (!eventoCod || !planos?.length) return res.json({ erro: 'Parâmetros inválidos' });
+
+    const ocsExist = await getOCs();
+    const existentes = new Set(ocsExist.map(o => o.plano?.trim()).filter(Boolean));
+    const novos = planos.filter(p => p && !existentes.has(p.trim()));
+
+    if (novos.length) {
+      const linhas = novos.map(p => ['', p.trim(), eventoCod, '', inferirCategoria(p), '']);
+      await adicionarLinhas(ABA.OCS, linhas);
+      const { del } = require('./cache');
+      del('ocs');
+    }
+
+    res.json({ ok: true, inseridos: novos.length, ignorados: planos.length - novos.length });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
 rotasOk.forEach(rota => { router.post(rota, (req, res) => res.json({ ok:true })); router.get(rota, (req, res) => res.json({ ok:true })); });
 
 module.exports = router;
