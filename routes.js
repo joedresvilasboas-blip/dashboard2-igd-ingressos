@@ -1309,7 +1309,9 @@ router.post('/reprocessar_todos_canais', async (req, res) => {
     const idxOC         = colMap[V_NOMES['OC']];
     const idxPlano      = colMap[V_NOMES['PLANO']];
 
-    const data = [];
+    // Acumula valores por campo (uma lista por campo = uma coluna inteira)
+    const campos = { canal:[], canalMacro:[], categoria:[], pontos:[], hc:[], semana:[], mes:[], evento:[], nomeVend:[], equipe:[] };
+
     for (let i = 0; i < rows.length; i++) {
       const row   = rows[i];
       const oc    = String(row[idxOC]    || '').trim();
@@ -1438,7 +1440,9 @@ router.post('/reprocessar_tudo', async (req, res) => {
       console.log(`[REPROCESSAR] Exemplo venda[0]: dtPag="${dtEx}" → strD="${strEx}"`);
     }
 
-    const data = [];
+    // Acumula valores por campo (uma lista por campo = uma coluna inteira)
+    const campos = { canal:[], canalMacro:[], categoria:[], pontos:[], hc:[], semana:[], mes:[], evento:[], nomeVend:[], equipe:[] };
+
     for (let i = 0; i < rows.length; i++) {
       const row     = rows[i];
       const plano   = String(row[idx.plano]   || '').trim();
@@ -1490,37 +1494,46 @@ router.post('/reprocessar_tudo', async (req, res) => {
 
       // HC — extraído do plano
       const hc = extrairHC(plano);
-
-      const linhaPlan = i + 2;
-      const col = c => {
-        const n = idx[c];
-        if (n === undefined) return null;
-        return n < 26 ? String.fromCharCode(65 + n) : String.fromCharCode(64 + Math.floor(n/26)) + String.fromCharCode(65 + (n%26));
-      };
-      const push = (c, v) => { const colLetra = col(c); if (colLetra) data.push({ range: `${ABA.VENDAS}!${colLetra}${linhaPlan}`, values: [[v]] }); };
-
-      push('canal',      canal);
-      push('canalMacro', canalMacro);
-      push('categoria',  categoria);
-      push('pontos',     pontos);
-      push('hc',         hc);
-      push('semana',     semana);
-      push('mes',        mes);
-      push('evento',     evento);
-      push('nomeVend',   nomeVend);
-      push('equipe',     equipe);
+      // Acumula valores por campo para envio em colunas inteiras
+      campos.canal.push([canal]);
+      campos.canalMacro.push([canalMacro]);
+      campos.categoria.push([categoria]);
+      campos.pontos.push([pontos]);
+      campos.hc.push([hc]);
+      campos.semana.push([semana]);
+      campos.mes.push([mes]);
+      campos.evento.push([evento]);
+      campos.nomeVend.push([nomeVend]);
+      campos.equipe.push([equipe]);
     }
 
-    // Blocos pequenos com pausa para respeitar quota do Sheets
-    const BLOCO = 100;
-    const PAUSA = 2000; // 2s entre blocos
-    for (let i = 0; i < data.length; i += BLOCO) {
-      await api.spreadsheets.values.batchUpdate({
-        spreadsheetId: sheetsModule.SPREADSHEET_ID,
-        requestBody: { valueInputOption: 'USER_ENTERED', data: data.slice(i, i + BLOCO) },
-      });
-      if (i + BLOCO < data.length) await new Promise(r => setTimeout(r, PAUSA));
-    }
+    // Envia cada campo como uma coluna inteira — apenas 10 chamadas no total
+    const colLetra = n => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26))+String.fromCharCode(65+(n%26));
+    const linhaIni = 2;
+    const linhaFim = rows.length + 1;
+    const campoDef = [
+      { c: 'canal',      vals: campos.canal      },
+      { c: 'canalMacro', vals: campos.canalMacro },
+      { c: 'categoria',  vals: campos.categoria  },
+      { c: 'pontos',     vals: campos.pontos      },
+      { c: 'hc',         vals: campos.hc          },
+      { c: 'semana',     vals: campos.semana      },
+      { c: 'mes',        vals: campos.mes         },
+      { c: 'evento',     vals: campos.evento      },
+      { c: 'nomeVend',   vals: campos.nomeVend    },
+      { c: 'equipe',     vals: campos.equipe      },
+    ].filter(x => idx[x.c] !== undefined);
+
+    const dataFinal = campoDef.map(x => ({
+      range: `${ABA.VENDAS}!${colLetra(idx[x.c])}${linhaIni}:${colLetra(idx[x.c])}${linhaFim}`,
+      values: x.vals,
+    }));
+
+    // Uma única chamada batchUpdate com 10 ranges (um por campo)
+    await api.spreadsheets.values.batchUpdate({
+      spreadsheetId: sheetsModule.SPREADSHEET_ID,
+      requestBody: { valueInputOption: 'USER_ENTERED', data: dataFinal },
+    });
 
     del('vendas_rows');
     console.log(`[REPROCESSAR] Concluído: ${rows.length} vendas`);
