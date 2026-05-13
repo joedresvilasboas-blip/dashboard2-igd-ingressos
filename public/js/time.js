@@ -540,10 +540,9 @@ const Time = {
       const hojeS = cfg.hojeStr || '';
       const semAtual = cal.find(s => hojeS >= s.strIni && hojeS <= s.strFim) || cal[cal.length-1] || {};
 
-      // Filtra semana atual
-      const psSem = semAtual.num ? ps.filter(s => s.semana === semAtual.num) : ps;
-      const t = Vendedor._agregarTotais(psSem);
       const tGeral = Vendedor._agregarTotais(ps);
+      // Usa totais gerais para exibição (mais completo)
+      const t = tGeral;
 
       const linha = (label, valor, cor='var(--text)') =>
         `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
