@@ -1492,7 +1492,8 @@ router.post('/reprocessar_tudo', async (req, res) => {
       const pontos = categoria === 'UPGRADE' ? 1 : categoria === 'VIP' ? 3 : 2;
 
       // Evento
-      const evCod  = ocInfo.eventoCod || '';
+      const ocInfoEvento = mapaOC[oc+'|'+plano] || mapaOC[oc] || {};
+      const evCod  = ocInfoEvento.eventoCod || '';
       const evInfo = mapaEvento[evCod] || {};
       const eventoAtual = String(row[idx.evento] || '').trim();
       const evento = evInfo.nome || evCod || eventoAtual || inferirEvento(plano);
