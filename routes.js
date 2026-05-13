@@ -246,29 +246,50 @@ router.get('/estrelas', async (req, res) => {
 // ====================================================
 router.post('/ranking_time', async (req, res) => {
   try {
-    const { strIni, strFim, canal, evento, status } = req.body;
+    const { strIni, strFim, canal, evento, status, categoria, mes, semana } = req.body;
     const colMap  = await getColMap();
     const dados   = await getVendasRows();
+    const sems    = await getCalendario();
     const vends   = await getVendedores();
     const mapaApelido = {};
     vends.forEach(v => { mapaApelido[v.codigo] = { apelido: v.apelido || v.nome, equipe: v.equipe, nivel: v.nivel }; });
 
+    // Normaliza filtros para arrays
+    const toArr = v => !v || (Array.isArray(v) && v.length === 0) ? [] : Array.isArray(v) ? v : [v];
+    const fCanal    = toArr(canal);
+    const fEvento   = toArr(evento);
+    const fStatus   = toArr(status);
+    const fCat      = toArr(categoria);
+    const fMes      = toArr(mes);
+    const fSemana   = toArr(semana).map(s => String(s).replace('Sem ','').trim());
+
+    // Resolve datas dos filtros de mês/semana
+    let _strIni = strIni || '', _strFim = strFim || '';
+    if (fSemana.length) {
+      const semsF = sems.filter(s => fSemana.includes(String(s.num)));
+      if (semsF.length) { _strIni = semsF[0].strIni; _strFim = semsF[semsF.length-1].strFim; }
+    } else if (fMes.length) {
+      const semsM = sems.filter(s => fMes.includes(s.mes));
+      if (semsM.length) { _strIni = semsM[0].strIni; _strFim = semsM[semsM.length-1].strFim; }
+    }
+
     const indMap = {};
     dados.forEach(row => {
-      const canalRow  = String(vRow(row, colMap, 'CANAL') || '').trim();
-      const eventoRow = String(vRow(row, colMap, 'EVENTO')|| '').trim();
-      const statusRow = String(vRow(row, colMap, 'STATUS')|| '').trim().toUpperCase();
+      const canalRow  = String(vRow(row, colMap, 'CANAL')     || '').trim();
+      const eventoRow = String(vRow(row, colMap, 'EVENTO')    || '').trim();
+      const statusRow = String(vRow(row, colMap, 'STATUS')    || '').trim().toUpperCase();
+      const catRow    = String(vRow(row, colMap, 'CATEGORIA') || '').trim().toUpperCase();
       const strD      = toDateStr(vRow(row, colMap, 'DT_PAG'));
 
-      // Filtros
-      if (canal  && canalRow  !== canal)  return;
-      if (evento && eventoRow !== evento) return;
-      if (status && statusRow !== status) return;
+      if (fCanal.length  && !fCanal.includes(canalRow))   return;
+      if (fEvento.length && !fEvento.includes(eventoRow))  return;
+      if (fStatus.length && !fStatus.includes(statusRow))  return;
+      if (fCat.length    && !fCat.includes(catRow))        return;
       if (!strD) return;
-      if (strIni && strD < strIni) return;
-      if (strFim && strD > strFim) return;
+      if (_strIni && strD < _strIni) return;
+      if (_strFim && strD > _strFim) return;
       // Canal padrão: só VA e RC se não filtrado
-      if (!canal && canalRow !== 'VA SALES' && canalRow !== 'RC SALES') return;
+      if (!fCanal.length && canalRow !== 'VA SALES' && canalRow !== 'RC SALES') return;
 
       const cod  = String(vRow(row, colMap, 'COD_VEND') || '').trim();
       const nome = String(vRow(row, colMap, 'NOME_VEND')|| '').trim();
