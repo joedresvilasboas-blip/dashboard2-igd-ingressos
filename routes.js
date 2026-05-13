@@ -947,8 +947,7 @@ router.post('/upload_csv', async (req, res) => {
         console.warn(`[UPLOAD] Primeira semana: ${sems[0]?.strIni} / Última: ${sems[sems.length-1]?.strFim}`);
       }
 
-      const idLink = '=HYPERLINK("https://central.ignicaodigital.com.br/payment/' + id + '/details","' + id + '")';
-      const dadosLinha = [idLink, dtPagSalvar, dtRegSalvar, codVend, vend.nome, vend.equipe, nomeCli, email, fone, plano, oc, evento, canal, canalMacro, categoria, hc, valor, statusFinal, pontos, semana, mes, dtCancel || '', idVenda, cpf];
+      const dadosLinha = [id, dtPagSalvar, dtRegSalvar, codVend, vend.nome, vend.equipe, nomeCli, email, fone, plano, oc, evento, canal, canalMacro, categoria, hc, valor, statusFinal, pontos, semana, mes, dtCancel || '', idVenda, cpf];
 
       if (idsExistentes[id]) {
         linhasAtualizar.push({ linha: idsExistentes[id], dados: dadosLinha });
@@ -1763,7 +1762,7 @@ router.post('/gerar_links', async (req, res) => {
       const id = String(row[idxID] || '').trim();
       if (!id) return null;
       const url  = 'https://central.ignicaodigital.com.br/payment/' + id + '/details';
-      const link = '=HYPERLINK("' + url + '","' + id + '")';
+      const link = '=HYPERLINK("' + url + '";"' + id + '")';
       return { range: ABA.VENDAS + '!' + colID + (i + 2), values: [[link]] };
     }).filter(Boolean);
 
