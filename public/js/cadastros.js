@@ -1359,16 +1359,19 @@ const CadOCs = {
     const btn = document.getElementById('btn-rep-tudo');
     const res_el = document.getElementById('res-tudo');
     Utils.btnLoading(btn, true);
-    res_el.textContent = 'Iniciando...';
+    res_el.textContent = 'Processando...';
     try {
       await API.post('reprocessar_tudo', {});
-      res_el.innerHTML = `<span style="color:var(--green)">✓ Processando em background! Aguarde ~1 minuto e invalide o cache.</span>`;
+      // Aguarda o processamento em background (~1 minuto) e invalida o cache
+      res_el.innerHTML = `<span style="color:var(--accent)">⏳ Processando em background...</span>`;
+      await new Promise(r => setTimeout(r, 60000));
+      await API.invalidarCache();
+      res_el.innerHTML = `<span style="color:var(--green)">✓ Concluído! Dados atualizados.</span>`;
     } catch(e) {
-      res_el.innerHTML = `<span style="color:var(--green)">✓ Processando em background! Aguarde ~1 minuto e invalide o cache.</span>`;
+      res_el.innerHTML = `<span style="color:var(--green)">✓ Processando em background...</span>`;
     }
     Utils.btnLoading(btn, false);
   },
-
   async reprocessarOCsPlanos() {
     const btn    = document.getElementById('btn-rep-ocs');
     const res_el = document.getElementById('res-ocs');
