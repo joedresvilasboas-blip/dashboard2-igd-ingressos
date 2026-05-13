@@ -2229,6 +2229,8 @@ router.post('/salvar_ocs_lote', async (req, res) => {
     const { eventoCod, ocs } = req.body;
     if (!eventoCod || !ocs?.length) return res.json({ erro: 'Parâmetros inválidos' });
 
+    const { del } = require('./cache');
+    del('ocs');
     const ocsExist = await getOCs();
     const existentes = new Set(ocsExist.map(o => o.oc.trim()));
     const novas = ocs.filter(oc => oc && !existentes.has(oc.trim()));
@@ -2236,7 +2238,6 @@ router.post('/salvar_ocs_lote', async (req, res) => {
     if (novas.length) {
       const linhas = novas.map(oc => [oc.trim(), '', eventoCod, '', '', '']);
       await adicionarLinhas(ABA.OCS, linhas);
-      const { del } = require('./cache');
       del('ocs');
     }
 
