@@ -1433,6 +1433,9 @@ router.post('/reprocessar_tudo', async (req, res) => {
         values: vals,
       }));
 
+    // Log para debug
+    data.forEach(d => console.log(`[REPROCESSAR] Range: ${d.range}, primeiros valores: ${JSON.stringify(d.values.slice(0,3))}`));
+
     await api.spreadsheets.values.batchUpdate({
       spreadsheetId: sheetsModule.SPREADSHEET_ID,
       requestBody: { valueInputOption: 'USER_ENTERED', data },
