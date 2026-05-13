@@ -1480,26 +1480,40 @@ router.post('/reprocessar_tudo', async (req, res) => {
       // HC — extraído do plano
       const hc = extrairHC(plano);
 
-      // Monta linha completa — copia a linha original e substitui só os campos recalculados
-      const novaLinha = [...row];
-      const set = (c, v) => { if (idx[c] !== undefined) novaLinha[idx[c]] = v; };
-      set('canal',      canal);
-      set('canalMacro', canalMacro);
-      set('categoria',  categoria);
-      set('pontos',     pontos);
-      set('hc',         hc);
-      set('semana',     semana);
-      set('mes',        mes);
-      set('evento',     evento);
-      set('nomeVend',   nomeVend);
-      set('equipe',     equipe);
-
       const linhaPlan = i + 2;
-      data.push({ range: `${ABA.VENDAS}!A${linhaPlan}`, values: [novaLinha] });
+      const colLetra = n => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26))+String.fromCharCode(65+(n%26));
+
+      // Agrupa campos em ranges contíguos para minimizar chamadas
+      // Cada push é um range que pode cobrir vários campos adjacentes
+      const campos = [
+        { c: 'canal',      v: canal      },
+        { c: 'canalMacro', v: canalMacro },
+        { c: 'categoria',  v: categoria  },
+        { c: 'hc',         v: hc         },
+        { c: 'pontos',     v: pontos     },
+        { c: 'semana',     v: semana     },
+        { c: 'mes',        v: mes        },
+        { c: 'evento',     v: evento     },
+        { c: 'nomeVend',   v: nomeVend   },
+        { c: 'equipe',     v: equipe     },
+      ].filter(x => idx[x.c] !== undefined);
+
+      // Tenta agrupar campos adjacentes em um único range
+      campos.sort((a,b) => idx[a.c] - idx[b.c]);
+      let j = 0;
+      while (j < campos.length) {
+        let k = j;
+        // Agrupa enquanto colunas forem consecutivas
+        while (k + 1 < campos.length && idx[campos[k+1].c] === idx[campos[k].c] + 1) k++;
+        const colIni = colLetra(idx[campos[j].c]);
+        const colFim = colLetra(idx[campos[k].c]);
+        const valores = campos.slice(j, k+1).map(x => x.v);
+        data.push({ range: `${ABA.VENDAS}!${colIni}${linhaPlan}:${colFim}${linhaPlan}`, values: [valores] });
+        j = k + 1;
+      }
     }
 
-    // 1 range por linha = muito menos chamadas à API
-    const BLOCO = 200;
+    const BLOCO = 500;
     for (let i = 0; i < data.length; i += BLOCO) {
       await api.spreadsheets.values.batchUpdate({
         spreadsheetId: sheetsModule.SPREADSHEET_ID,
