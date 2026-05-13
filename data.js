@@ -130,16 +130,27 @@ async function getCalendario() {
   if (cached) return cached;
   const rows = await lerAba(ABA.CALENDARIO);
   if (rows.length < 2) return [];
+
+  // Converte DD/MM/YYYY ou YYYY-MM-DD para YYYY-MM-DD
+  const toYMD = (val) => {
+    if (!val) return '';
+    const s = String(val).trim();
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    return '';
+  };
+
   const data = rows.slice(1)
     .filter(r => r[0] && r[1])
     .map(r => {
-      const strIni = String(r[1]||'').trim().slice(0,10);
-      const strFim = String(r[2]||'').trim().slice(0,10);
+      const strIni = toYMD(r[1]);
+      const strFim = toYMD(r[2]);
       const pI = strIni.split('-'), pF = strFim.split('-');
       return {
         num:    parseInt(r[0]),
         strIni, strFim,
-        label:  `${pI[2]}/${pI[1]} a ${pF[2]}/${pF[1]}`,
+        label:  pI.length === 3 ? `${pI[2]}/${pI[1]} a ${pF[2]}/${pF[1]}` : '',
         mes:    String(r[3]||'').trim(),
       };
     });
