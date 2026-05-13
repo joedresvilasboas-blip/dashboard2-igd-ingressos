@@ -1511,20 +1511,28 @@ router.post('/reprocessar_tudo', async (req, res) => {
       if (i + BLOCO < data.length) await new Promise(r => setTimeout(r, 500));
     }
 
-    // Atualiza também OCS_PLANOS — CANAL e CANAL_MACRO
+    // Atualiza também OCS_PLANOS — CANAL, CATEGORIA e CANAL_MACRO
     const ocsRows = await lerAba(ABA.OCS);
     const dataOCS = [];
+    let ocsSemCanal = 0;
     for (let i = 1; i < ocsRows.length; i++) {
       const r  = ocsRows[i];
       const oc = String(r[0]||'').trim();
       const pl = String(r[1]||'').trim();
       if (!oc && !pl) continue;
-      const { canal: cOCS, canalMacro: mOCS } = await inferirCanal(oc, pl);
-      if (!cOCS) continue;
       const catOCS = inferirCategoria(pl);
+      // Tenta inferir canal pela OC e pelo Plano
+      const inf = await inferirCanal(oc, pl);
+      const cOCS = inf.canal;
+      const mOCS = inf.canalMacro;
+      // Se não inferiu, mantém o que já está na planilha
+      const canalFinal = cOCS || String(r[3]||'').trim();
+      const macroFinal = mOCS || String(r[5]||'').trim();
+      if (!cOCS) ocsSemCanal++;
       // Colunas: D=CANAL, E=CATEGORIA, F=CANAL_MACRO
-      dataOCS.push({ range: `${ABA.OCS}!D${i+1}:F${i+1}`, values: [[cOCS, catOCS, mOCS]] });
+      dataOCS.push({ range: `${ABA.OCS}!D${i+1}:F${i+1}`, values: [[canalFinal, catOCS, macroFinal]] });
     }
+    console.log(`[REPROCESSAR OCS] Total: ${ocsRows.length-1}, atualizados: ${dataOCS.length}, sem canal: ${ocsSemCanal}`);
     for (let i = 0; i < dataOCS.length; i += BLOCO) {
       await api.spreadsheets.values.batchUpdate({
         spreadsheetId: sheetsModule.SPREADSHEET_ID,
