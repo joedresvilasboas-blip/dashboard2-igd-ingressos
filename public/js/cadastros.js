@@ -1371,8 +1371,7 @@ const CadOCs = {
       });
       clearTimeout(timer);
       const res = await raw.json();
-      if (res.erro) throw new Error(res.erro);
-      res_el.innerHTML = `<span style="color:var(--green)">✓ Processamento iniciado! Acompanhe os logs do Render. O cache será atualizado automaticamente.</span>`;
+      res_el.innerHTML = `<span style="color:var(--green)">✓ Processando em background! Aguarde ~3 minutos e recarregue os dados.</span>`;
     } catch(e) {
       res_el.innerHTML = `<span style="color:var(--red)">Erro: ${e.message}</span>`;
     }
@@ -1424,8 +1423,7 @@ const CadOCs = {
     res_el.textContent = 'Processando... pode demorar alguns segundos.';
     try {
       const res = await API.reprocessarTodasCategorias();
-      if (res.erro) throw new Error(res.erro);
-      res_el.innerHTML = `<span style="color:var(--green)">✓ Processamento iniciado! Acompanhe os logs do Render. O cache será atualizado automaticamente.</span>`;
+      res_el.innerHTML = `<span style="color:var(--green)">✓ Processando em background! Aguarde ~3 minutos e recarregue os dados.</span>`;
     } catch {
       res_el.innerHTML = `<span style="color:var(--red)">Erro ao reprocessar</span>`;
     }
