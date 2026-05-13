@@ -1345,7 +1345,6 @@ router.post('/reprocessar_tudo', async (req, res) => {
     );
     const api = google.sheets({ version: 'v4', auth });
 
-    // Invalida cache do calendário para garantir datas no formato correto
     del('calendario');
 
     const colMap  = await getColMap();
@@ -1354,10 +1353,6 @@ router.post('/reprocessar_tudo', async (req, res) => {
     const ocs     = await getOCs();
     const eventos = await getEventos();
     const vends   = await getVendedores();
-
-    // Verifica formato das datas do calendário
-    console.log('[REPROCESSAR] sems[0]:', JSON.stringify(sems[0]));
-    console.log('[REPROCESSAR] sems[7]:', JSON.stringify(sems[7]));
 
     const mapaOC = {}, mapaEvento = {};
     ocs.forEach(o => { mapaOC[o.oc+'|'+o.plano] = o; mapaOC[o.oc] = o; });
@@ -1390,15 +1385,6 @@ router.post('/reprocessar_tudo', async (req, res) => {
 
     const colLetra = n => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26))+String.fromCharCode(65+(n%26));
 
-    // Log do valor bruto da data para debug
-    if (rows.length > 0) {
-      const rawDtPag = rows[0][idx.dtPag];
-      const rawDtReg = idx.dtReg !== undefined ? rows[0][idx.dtReg] : 'N/A';
-      console.log('[REPROCESSAR] idx.dtPag=', idx.dtPag, 'rawDtPag=', rawDtPag, typeof rawDtPag);
-      console.log('[REPROCESSAR] idx.dtReg=', idx.dtReg, 'rawDtReg=', rawDtReg);
-      console.log('[REPROCESSAR] toDateStr(rawDtPag)=', toDateStr(rawDtPag));
-    }
-
     // Pré-calcula semana/mês usando toDateStr que já trata Date objects, seriais e DD/MM/YYYY
     const smPre = rows.map(row => {
       const strD = toDateStr(row[idx.dtPag]) || toDateStr(idx.dtReg !== undefined ? row[idx.dtReg] : '');
@@ -1406,7 +1392,7 @@ router.post('/reprocessar_tudo', async (req, res) => {
       const f = sems.find(s => strD >= s.strIni && strD <= s.strFim);
       return [f ? f.num : '', f ? f.mes : ''];
     });
-    console.log('[REPROCESSAR] smPre[0..2]:', smPre.slice(0,3));
+
 
     // Acumula valores por coluna
     const cols = {canal:[], canalMacro:[], categoria:[], pontos:[], hc:[], semana:[], mes:[], evento:[], nomeVend:[], equipe:[]};
@@ -1442,8 +1428,7 @@ router.post('/reprocessar_tudo', async (req, res) => {
         values: vals,
       }));
 
-    // Log para debug
-    data.forEach(d => console.log(`[REPROCESSAR] Range: ${d.range}, primeiros valores: ${JSON.stringify(d.values.slice(0,3))}`));
+
 
     await api.spreadsheets.values.batchUpdate({
       spreadsheetId: sheetsModule.SPREADSHEET_ID,
