@@ -1381,23 +1381,16 @@ router.post('/reprocessar_tudo', async (req, res) => {
       evento:     colMap[V_NOMES['EVENTO']],
     };
 
-    const exStrD = (val) => {
-      if (!val) return '';
-      const s = String(val).trim();
-      const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-      if (m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
-      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-      return '';
-    };
     const colLetra = n => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26))+String.fromCharCode(65+(n%26));
 
-    // Pré-calcula semana/mês de forma síncrona
+    // Pré-calcula semana/mês usando toDateStr que já trata Date objects, seriais e DD/MM/YYYY
     const smPre = rows.map(row => {
-      const strD = exStrD(row[idx.dtPag]) || exStrD(idx.dtReg !== undefined ? row[idx.dtReg] : '');
+      const strD = toDateStr(row[idx.dtPag]) || toDateStr(idx.dtReg !== undefined ? row[idx.dtReg] : '');
       if (!strD) return ['', ''];
       const f = sems.find(s => strD >= s.strIni && strD <= s.strFim);
       return [f ? f.num : '', f ? f.mes : ''];
     });
+    console.log('[REPROCESSAR] smPre[0..2]:', smPre.slice(0,3));
 
     // Acumula valores por coluna
     const cols = {canal:[], canalMacro:[], categoria:[], pontos:[], hc:[], semana:[], mes:[], evento:[], nomeVend:[], equipe:[]};
