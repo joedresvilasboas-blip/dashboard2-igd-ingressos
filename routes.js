@@ -1521,7 +1521,9 @@ router.post('/reprocessar_tudo', async (req, res) => {
       if (!oc && !pl) continue;
       const { canal: cOCS, canalMacro: mOCS } = await inferirCanal(oc, pl);
       if (!cOCS) continue;
-      dataOCS.push({ range: `${ABA.OCS}!D${i+1}:F${i+1}`, values: [[cOCS, '', mOCS]] });
+      const catOCS = inferirCategoria(pl);
+      // Colunas: D=CANAL, E=CATEGORIA, F=CANAL_MACRO
+      dataOCS.push({ range: `${ABA.OCS}!D${i+1}:F${i+1}`, values: [[cOCS, catOCS, mOCS]] });
     }
     for (let i = 0; i < dataOCS.length; i += BLOCO) {
       await api.spreadsheets.values.batchUpdate({
