@@ -1511,9 +1511,30 @@ router.post('/reprocessar_tudo', async (req, res) => {
       if (i + BLOCO < data.length) await new Promise(r => setTimeout(r, 500));
     }
 
+    // Atualiza também OCS_PLANOS — CANAL e CANAL_MACRO
+    const ocsRows = await lerAba(ABA.OCS);
+    const dataOCS = [];
+    for (let i = 1; i < ocsRows.length; i++) {
+      const r  = ocsRows[i];
+      const oc = String(r[0]||'').trim();
+      const pl = String(r[1]||'').trim();
+      if (!oc && !pl) continue;
+      const { canal: cOCS, canalMacro: mOCS } = await inferirCanal(oc, pl);
+      if (!cOCS) continue;
+      dataOCS.push({ range: `${ABA.OCS}!D${i+1}:F${i+1}`, values: [[cOCS, '', mOCS]] });
+    }
+    for (let i = 0; i < dataOCS.length; i += BLOCO) {
+      await api.spreadsheets.values.batchUpdate({
+        spreadsheetId: sheetsModule.SPREADSHEET_ID,
+        requestBody: { valueInputOption: 'USER_ENTERED', data: dataOCS.slice(i, i + BLOCO) },
+      });
+      if (i + BLOCO < dataOCS.length) await new Promise(r => setTimeout(r, 300));
+    }
+
     del('vendas_rows');
-    console.log(`[REPROCESSAR] Concluído: ${rows.length} vendas, ${data.length} campos atualizados`);
-    res.json({ ok: true, atualizados: rows.length });
+    del('ocs');
+    console.log(`[REPROCESSAR] Concluído: ${rows.length} vendas, ${dataOCS.length} OCs atualizadas`);
+    res.json({ ok: true, atualizados: rows.length, atualizadosOCS: dataOCS.length });
 
   } catch(e) { res.json({ erro: e.message }); }
 });
