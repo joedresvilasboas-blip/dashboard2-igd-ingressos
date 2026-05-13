@@ -1309,9 +1309,7 @@ router.post('/reprocessar_todos_canais', async (req, res) => {
     const idxOC         = colMap[V_NOMES['OC']];
     const idxPlano      = colMap[V_NOMES['PLANO']];
 
-    // Acumula valores por campo (uma lista por campo = uma coluna inteira)
-    const campos = { canal:[], canalMacro:[], categoria:[], pontos:[], hc:[], semana:[], mes:[], evento:[], nomeVend:[], equipe:[] };
-
+    const data = [];
     for (let i = 0; i < rows.length; i++) {
       const row   = rows[i];
       const oc    = String(row[idxOC]    || '').trim();
@@ -1382,6 +1380,8 @@ router.post('/reprocessar_todas_categorias', async (req, res) => {
 // REPROCESSAR TUDO — semana, mês, canal, categoria, pontos, evento
 // ====================================================
 router.post('/reprocessar_tudo', async (req, res) => {
+  // Responde imediatamente — processa em background
+  res.json({ ok: true, atualizados: 0, msg: 'iniciado' });
   try {
     const { del } = require('./cache');
     const sheetsModule = require('./sheets');
@@ -1440,39 +1440,7 @@ router.post('/reprocessar_tudo', async (req, res) => {
       console.log(`[REPROCESSAR] Exemplo venda[0]: dtPag="${dtEx}" → strD="${strEx}"`);
     }
 
-    // Extrai YYYY-MM-DD sem usar Date
-    const _exStrD = (val) => {
-      if (!val) return '';
-      const s = String(val).trim();
-      const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-      if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
-      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-      return '';
-    };
-
-    // Pré-calcula semana/mês para todas as linhas (sem async)
-    const semanaMes = rows.map(row => {
-      const strDRef = _exStrD(row[idx.dtPag]) || _exStrD(row[idx.dtReg] !== undefined ? row[idx.dtReg] : '');
-      if (!strDRef) return { semana: '', mes: '' };
-      const found = sems.find(s => strDRef >= s.strIni && strDRef <= s.strFim);
-      return { semana: found ? found.num : '', mes: found ? found.mes : '' };
-    });
-
-    // Pré-calcula canais para todas as linhas (com async, mas separado)
-    const canaisCalculados = await Promise.all(rows.map(async (row) => {
-      const oc    = String(row[idx.oc]    || '').trim();
-      const plano = String(row[idx.plano] || '').trim();
-      const ocInfo   = mapaOC[oc+'|'+plano] || mapaOC[oc] || {};
-      const inferido = await inferirCanal(oc, plano);
-      return {
-        canal:      ocInfo.canal      || inferido.canal      || String(row[idx.canal]      || '').trim(),
-        canalMacro: ocInfo.canalMacro || inferido.canalMacro || String(row[idx.canalMacro] || '').trim(),
-      };
-    }));
-
-    // Acumula valores por campo (uma lista por campo = uma coluna inteira)
-    const campos = { canal:[], canalMacro:[], categoria:[], pontos:[], hc:[], semana:[], mes:[], evento:[], nomeVend:[], equipe:[] };
-
+    const data = [];
     for (let i = 0; i < rows.length; i++) {
       const row     = rows[i];
       const plano   = String(row[idx.plano]   || '').trim();
@@ -1480,16 +1448,38 @@ router.post('/reprocessar_tudo', async (req, res) => {
       const status  = String(row[idx.status]  || '').trim().toUpperCase();
       const valor   = parseFloat(String(row[idx.valor] || '0').replace('R$','').replace(/\s/g,'').replace(',','.')) || 0;
 
-      const { semana, mes } = semanaMes[i];
-      const { canal, canalMacro } = canaisCalculados[i];
+      // Extrai YYYY-MM-DD sem usar Date (evita problema de fuso UTC no Render)
+      const _exStrD = (val) => {
+        if (!val) return '';
+        const s = String(val).trim();
+        const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+        return '';
+      };
+      const strDPag = _exStrD(row[idx.dtPag]);
+      const strDReg = idx.dtReg !== undefined ? _exStrD(row[idx.dtReg]) : '';
+      const strDRef = strDPag || strDReg;
+
+      // Semana e mês
+      let semana = '', mes = '';
+      if (strDRef) {
+        sems.forEach(s => { if (strDRef >= s.strIni && strDRef <= s.strFim) { semana = s.num; mes = s.mes; } });
+        if (!semana) console.warn(`[REPROCESSAR] Sem semana para: ${strDRef} (pag: ${row[idx.dtPag]}, reg: ${row[idx.dtReg]})`);
+      }
+
+      // Canal
+      const ocInfo     = mapaOC[oc+'|'+plano] || mapaOC[oc] || {};
+      const inferido   = await inferirCanal(oc, plano);
+      const canal      = ocInfo.canal      || inferido.canal      || String(row[idx.canal]      || '').trim();
+      const canalMacro = ocInfo.canalMacro || inferido.canalMacro || String(row[idx.canalMacro] || '').trim();
 
       // Categoria e pontos — cancelado mantém pontuação normal
       const categoria = inferirCategoria(plano);
       const pontos = categoria === 'UPGRADE' ? 1 : categoria === 'VIP' ? 3 : 2;
 
       // Evento
-      const ocInfoEvento = mapaOC[oc+'|'+plano] || mapaOC[oc] || {};
-      const evCod  = ocInfoEvento.eventoCod || '';
+      const evCod  = ocInfo.eventoCod || '';
       const evInfo = mapaEvento[evCod] || {};
       const eventoAtual = String(row[idx.evento] || '').trim();
       const evento = evInfo.nome || evCod || eventoAtual || inferirEvento(plano);
@@ -1502,56 +1492,41 @@ router.post('/reprocessar_tudo', async (req, res) => {
 
       // HC — extraído do plano
       const hc = extrairHC(plano);
-      // Acumula valores por campo para envio em colunas inteiras
-      campos.canal.push([canal]);
-      campos.canalMacro.push([canalMacro]);
-      campos.categoria.push([categoria]);
-      campos.pontos.push([pontos]);
-      campos.hc.push([hc]);
-      campos.semana.push([semana]);
-      campos.mes.push([mes]);
-      campos.evento.push([evento]);
-      campos.nomeVend.push([nomeVend]);
-      campos.equipe.push([equipe]);
+
+      const linhaPlan = i + 2;
+      const col = c => {
+        const n = idx[c];
+        if (n === undefined) return null;
+        return n < 26 ? String.fromCharCode(65 + n) : String.fromCharCode(64 + Math.floor(n/26)) + String.fromCharCode(65 + (n%26));
+      };
+      const push = (c, v) => { const colLetra = col(c); if (colLetra) data.push({ range: `${ABA.VENDAS}!${colLetra}${linhaPlan}`, values: [[v]] }); };
+
+      push('canal',      canal);
+      push('canalMacro', canalMacro);
+      push('categoria',  categoria);
+      push('pontos',     pontos);
+      push('hc',         hc);
+      push('semana',     semana);
+      push('mes',        mes);
+      push('evento',     evento);
+      push('nomeVend',   nomeVend);
+      push('equipe',     equipe);
     }
 
-    // Debug: mostra primeiros 5 valores de semana e mes
-    console.log('[REPROCESSAR] Semanas[0-4]:', campos.semana.slice(0,5).map(x=>x[0]));
-    console.log('[REPROCESSAR] Mes[0-4]:', campos.mes.slice(0,5).map(x=>x[0]));
-    console.log('[REPROCESSAR] Total campos:', campos.semana.length, 'linhas');
-
-    // Envia cada campo como uma coluna inteira — apenas 10 chamadas no total
-    const colLetra = n => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26))+String.fromCharCode(65+(n%26));
-    const linhaIni = 2;
-    const linhaFim = rows.length + 1;
-    const campoDef = [
-      { c: 'canal',      vals: campos.canal      },
-      { c: 'canalMacro', vals: campos.canalMacro },
-      { c: 'categoria',  vals: campos.categoria  },
-      { c: 'pontos',     vals: campos.pontos      },
-      { c: 'hc',         vals: campos.hc          },
-      { c: 'semana',     vals: campos.semana      },
-      { c: 'mes',        vals: campos.mes         },
-      { c: 'evento',     vals: campos.evento      },
-      { c: 'nomeVend',   vals: campos.nomeVend    },
-      { c: 'equipe',     vals: campos.equipe      },
-    ].filter(x => idx[x.c] !== undefined);
-
-    const dataFinal = campoDef.map(x => ({
-      range: `${ABA.VENDAS}!${colLetra(idx[x.c])}${linhaIni}:${colLetra(idx[x.c])}${linhaFim}`,
-      values: x.vals,
-    }));
-
-    // Uma única chamada batchUpdate com 10 ranges (um por campo)
-    await api.spreadsheets.values.batchUpdate({
-      spreadsheetId: sheetsModule.SPREADSHEET_ID,
-      requestBody: { valueInputOption: 'USER_ENTERED', data: dataFinal },
-    });
+    // Blocos pequenos com pausa para respeitar quota do Sheets
+    const BLOCO = 100;
+    const PAUSA = 2000; // 2s entre blocos
+    for (let i = 0; i < data.length; i += BLOCO) {
+      await api.spreadsheets.values.batchUpdate({
+        spreadsheetId: sheetsModule.SPREADSHEET_ID,
+        requestBody: { valueInputOption: 'USER_ENTERED', data: data.slice(i, i + BLOCO) },
+      });
+      if (i + BLOCO < data.length) await new Promise(r => setTimeout(r, PAUSA));
+    }
 
     del('vendas_rows');
     console.log(`[REPROCESSAR] Concluído: ${rows.length} vendas`);
-    res.json({ ok: true, atualizados: rows.length });
-  } catch(e) { res.json({ erro: e.message }); }
+  } catch(e) { console.error('[REPROCESSAR] Erro:', e.message); }
 });
 
 // ====================================================
