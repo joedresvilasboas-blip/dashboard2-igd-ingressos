@@ -1477,32 +1477,29 @@ router.post('/reprocessar_tudo', async (req, res) => {
       const nomeVend = vendInfo.nome   || String(row[idx.nomeVend] || '').trim();
       const equipe   = vendInfo.equipe || String(row[idx.equipe]   || '').trim();
 
-      const linhaPlan = i + 2;
-      const col = c => {
-        const n = idx[c];
-        if (n === undefined) return null;
-        return n < 26 ? String.fromCharCode(65 + n) : String.fromCharCode(64 + Math.floor(n/26)) + String.fromCharCode(65 + (n%26));
-      };
-
-      const push = (c, v) => { const colLetra = col(c); if (colLetra) data.push({ range: `${ABA.VENDAS}!${colLetra}${linhaPlan}`, values: [[v]] }); };
-
       // HC — extraído do plano
       const hc = extrairHC(plano);
 
-      push('canal',      canal);
-      push('canalMacro', canalMacro);
-      push('categoria',  categoria);
-      push('pontos',     pontos);
-      push('hc',         hc);
-      push('semana',     semana);
-      push('mes',        mes);
-      push('evento',     evento);
-      push('nomeVend',   nomeVend);
-      push('equipe',     equipe);
+      // Monta linha completa — copia a linha original e substitui só os campos recalculados
+      const novaLinha = [...row];
+      const set = (c, v) => { if (idx[c] !== undefined) novaLinha[idx[c]] = v; };
+      set('canal',      canal);
+      set('canalMacro', canalMacro);
+      set('categoria',  categoria);
+      set('pontos',     pontos);
+      set('hc',         hc);
+      set('semana',     semana);
+      set('mes',        mes);
+      set('evento',     evento);
+      set('nomeVend',   nomeVend);
+      set('equipe',     equipe);
+
+      const linhaPlan = i + 2;
+      data.push({ range: `${ABA.VENDAS}!A${linhaPlan}`, values: [novaLinha] });
     }
 
-    // Processa em blocos com pausa para não estourar cota
-    const BLOCO = 500;
+    // 1 range por linha = muito menos chamadas à API
+    const BLOCO = 200;
     for (let i = 0; i < data.length; i += BLOCO) {
       await api.spreadsheets.values.batchUpdate({
         spreadsheetId: sheetsModule.SPREADSHEET_ID,
