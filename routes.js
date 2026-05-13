@@ -398,8 +398,9 @@ router.get('/relatorio_diario', async (req, res) => {
 
     const mapaEventosFuturos = {};
     eventosInfo.forEach(e => {
-      const dtFim = e.dtFimEv || e.dtEvento || '';
-      if (dtFim >= hojeS) mapaEventosFuturos[e.nome] = e.dtEvento || '9999-99-99';
+      const dtFim = toDateStr(e.dtFimEv) || toDateStr(e.dtEvento) || '';
+      const dtEv  = toDateStr(e.dtEvento) || '9999-99-99';
+      if (dtFim >= hojeS) mapaEventosFuturos[e.nome] = dtEv;
     });
 
     const eventos = {};
