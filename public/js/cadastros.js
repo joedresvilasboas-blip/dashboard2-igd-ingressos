@@ -931,28 +931,6 @@ const CadOCs = {
             <div id="res-tudo" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
           </div>
 
-          <div class="card card-sm" style="margin-bottom:var(--s3)">
-            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:var(--s2)">↺ Reprocessar Canais</div>
-            <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
-              Relê as Regras de Canal e atualiza o Sub-canal e Canal Macro de todas as OCs e todas as vendas da planilha.
-            </div>
-            <button class="btn btn-primary btn-full" id="btn-rep-canais" onclick="CadOCs.reprocessarCanais()">
-              Reprocessar Todos os Canais
-            </button>
-            <div id="res-canais" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
-          </div>
-
-          <div class="card card-sm" style="margin-bottom:var(--s3)">
-            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:var(--s2)">↺ Reprocessar Categorias</div>
-            <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
-              Relê o Plano de cada venda e atualiza a coluna CATEGORIA (NORMAL, VIP, ESSENTIAL, UPGRADE) em toda a planilha.
-            </div>
-            <button class="btn btn-primary btn-full" id="btn-rep-cats" onclick="CadOCs.reprocessarCategorias()">
-              Reprocessar Todas as Categorias
-            </button>
-            <div id="res-cats" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
-          </div>
-
           <div class="card card-sm" style="margin-bottom:var(--s3);border-color:#e85d5d">
             <div style="font-size:13px;font-weight:600;color:#e85d5d;margin-bottom:var(--s2)">🧹 Remover Duplicatas</div>
             <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
@@ -1349,7 +1327,7 @@ const CadOCs = {
     res_el.textContent = 'Processando... pode demorar alguns segundos.';
     try {
       const res = await API.post('reprocessar_tudo', {});
-      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados} vendas atualizadas!</span>`;
+      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados} vendas e ${res.atualizadosOCS||0} OCs atualizadas!</span>`;
     } catch {
       res_el.innerHTML = `<span style="color:var(--red)">Erro ao reprocessar</span>`;
     }
@@ -1377,7 +1355,7 @@ const CadOCs = {
     res_el.textContent = 'Processando... pode demorar alguns segundos.';
     try {
       const res = await API.reprocessarTodasCategorias();
-      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados} vendas atualizadas!</span>`;
+      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados} vendas e ${res.atualizadosOCS||0} OCs atualizadas!</span>`;
     } catch {
       res_el.innerHTML = `<span style="color:var(--red)">Erro ao reprocessar</span>`;
     }
