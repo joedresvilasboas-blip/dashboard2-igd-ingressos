@@ -521,13 +521,13 @@ const Time = {
       this._vendedoresExpandidos.delete(codigo);
       expandEl.style.display = 'none';
       if (chevronEl) chevronEl.style.transform = 'rotate(0deg)';
-      if (cardEl) cardEl.style.gridColumn = '';
+  
       return;
     }
 
     this._vendedoresExpandidos.add(codigo);
     if (chevronEl) chevronEl.style.transform = 'rotate(180deg)';
-    if (cardEl) cardEl.style.gridColumn = '1/-1';
+
     expandEl.style.display = 'block';
     expandEl.innerHTML = '<div style="padding:var(--s4);display:flex;align-items:center;justify-content:center"><div class="spinner"></div></div>';
 
@@ -545,48 +545,61 @@ const Time = {
       const t = Vendedor._agregarTotais(psSem);
       const tGeral = Vendedor._agregarTotais(ps);
 
+      const linha = (label, valor, cor='var(--text)') =>
+        `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:11px;color:var(--text-3)">${label}</span>
+          <span style="font-size:11px;font-weight:600;color:${cor}">${valor}</span>
+        </div>`;
+
       expandEl.innerHTML = `
-        <div style="padding:var(--s4)">
+        <div style="padding:10px 14px">
           <!-- Período -->
-          <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:var(--s3)">
+          <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
             Semana atual · ${semAtual.label || '—'}
           </div>
 
-          <!-- Produção semana -->
-          <div style="display:flex;gap:var(--s3);flex-wrap:wrap;margin-bottom:var(--s4)">
-            ${Vendedor._pill('HC',        t.hc,        'var(--accent)')}
-            ${Vendedor._pill('VA',        t.va,        '#e8b86d')}
-            ${Vendedor._pill('RC',        t.rc,        '#5d9ee8')}
-            ${Vendedor._pill('Upgrades',  t.upgrade,   '#b86de8')}
-            ${t.cancelados > 0 ? Vendedor._pill('Cancelados', t.cancelados, '#e85d5d') : ''}
-          </div>
+          <!-- Gráfico compacto -->
+          ${Vendedor._graficoEvolucao(ps)}
 
-          <!-- Gráfico evolução -->
-          <div style="margin-bottom:var(--s4)">
-            <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:var(--s2)">Evolução HC por semana</div>
-            ${Vendedor._graficoEvolucao(ps)}
-          </div>
-
-          <!-- Funil -->
-          <div style="margin-bottom:var(--s4)">
-            <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:var(--s2)">Funil de Conversão</div>
-            ${Vendedor._funil(tGeral)}
+          <!-- Produção -->
+          <div style="margin:10px 0 4px">
+            ${linha('HC', t.hc, 'var(--accent)')}
+            ${linha('VA Sales', t.va, '#e8b86d')}
+            ${linha('RC Sales', t.rc, '#5d9ee8')}
+            ${linha('Upgrades', t.upgrade, '#b86de8')}
+            ${t.cancelados > 0 ? linha('Cancelados', t.cancelados, '#e85d5d') : ''}
+            ${linha('Faturamento', 'R$ ' + (tGeral.faturamento||0).toLocaleString('pt-BR',{minimumFractionDigits:2}), '#4caf50')}
           </div>
 
           <!-- Atividade -->
-          <div style="display:flex;gap:var(--s3);flex-wrap:wrap;margin-bottom:var(--s3)">
-            ${Vendedor._pill('Horas', tGeral.horas,     'var(--text)')}
-            ${Vendedor._pill('HC/h',  tGeral.hcPorHora, Vendedor._corTaxa(tGeral.hcPorHora,1,2))}
-            ${Vendedor._pill('Pace',  tGeral.pace,       'var(--text)')}
+          <div style="margin:8px 0 4px">
+            ${linha('Horas faladas', tGeral.horas)}
+            ${linha('HC/hora', tGeral.hcPorHora, Vendedor._corTaxa(tGeral.hcPorHora,1,2))}
+            ${linha('Pace/venda', tGeral.pace)}
+            ${linha('Conversão', tGeral.txEntrv + '%', Vendedor._corTaxa(tGeral.txEntrv,20,40))}
           </div>
 
-          <!-- ROI -->
-          ${Vendedor._blocoROI(v, tGeral, ps)}
+          <!-- ROI compacto -->
+          ${(() => {
+            const fixos = { junior:1500, pleno:1800, senior:2200 };
+            const fixo  = fixos[(v.nivel||'junior').toLowerCase()];
+            if (!fixo || !tGeral.faturamento) return '';
+            const comissao   = tGeral.faturamento * 0.25;
+            const custoTotal = fixo + comissao;
+            const roi        = Math.round((tGeral.faturamento - custoTotal) / custoTotal * 100);
+            const cor        = roi >= 0 ? '#4caf50' : '#e85d5d';
+            return '<div style="margin:8px 0 4px">' +
+              linha('Fixo', 'R$ ' + fixo.toLocaleString('pt-BR')) +
+              linha('Comissão', 'R$ ' + comissao.toLocaleString('pt-BR',{minimumFractionDigits:2})) +
+              linha('ROI', roi + '%', cor) +
+            '</div>';
+          })()}
 
-          <!-- Botão ver perfil completo -->
-          <div style="margin-top:var(--s3);text-align:center">
-            <button class="btn btn-sm btn-secondary" onclick="Vendedor.abrir('${codigo}')">Ver perfil completo →</button>
-          </div>
+          <!-- Botão -->
+          <button class="btn btn-sm btn-secondary" style="width:100%;margin-top:10px;font-size:11px"
+            onclick="event.stopPropagation();Vendedor.abrir('${codigo}')">
+            Ver perfil completo →
+          </button>
         </div>`;
     } catch(e) {
       expandEl.innerHTML = `<div style="padding:var(--s4);color:var(--red);font-size:12px">Erro: ${e.message}</div>`;
