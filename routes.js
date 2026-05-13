@@ -1383,6 +1383,15 @@ router.post('/reprocessar_tudo', async (req, res) => {
 
     const colLetra = n => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26))+String.fromCharCode(65+(n%26));
 
+    // Log do valor bruto da data para debug
+    if (rows.length > 0) {
+      const rawDtPag = rows[0][idx.dtPag];
+      const rawDtReg = idx.dtReg !== undefined ? rows[0][idx.dtReg] : 'N/A';
+      console.log('[REPROCESSAR] idx.dtPag=', idx.dtPag, 'rawDtPag=', rawDtPag, typeof rawDtPag);
+      console.log('[REPROCESSAR] idx.dtReg=', idx.dtReg, 'rawDtReg=', rawDtReg);
+      console.log('[REPROCESSAR] toDateStr(rawDtPag)=', toDateStr(rawDtPag));
+    }
+
     // Pré-calcula semana/mês usando toDateStr que já trata Date objects, seriais e DD/MM/YYYY
     const smPre = rows.map(row => {
       const strD = toDateStr(row[idx.dtPag]) || toDateStr(idx.dtReg !== undefined ? row[idx.dtReg] : '');
