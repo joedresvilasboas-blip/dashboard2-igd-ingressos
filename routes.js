@@ -2138,6 +2138,44 @@ router.post('/corrigir_oc_cadastro', async (req, res) => {
 });
 
 // ====================================================
+// LISTAR SEM CADASTRO — OCs e Planos das vendas sem vínculo de evento
+// ====================================================
+router.get('/listar_sem_cadastro', async (req, res) => {
+  try {
+    const colMap  = await getColMap();
+    const rows    = await getVendasRows();
+    const ocs     = await getOCs();
+    const eventos = await getEventos();
+
+    const ocsExist    = new Set(ocs.map(o => o.oc?.trim()).filter(Boolean));
+    const planosExist = new Set(ocs.map(o => o.plano?.trim()).filter(Boolean));
+
+    const ocsSemCad = {}, planosSemCad = {};
+    rows.forEach(row => {
+      const oc    = String(vRow(row, colMap, 'OC')    || '').trim();
+      const plano = String(vRow(row, colMap, 'PLANO') || '').trim();
+      const ev    = String(vRow(row, colMap, 'EVENTO')|| '').trim();
+
+      if (oc && !ocsExist.has(oc)) {
+        if (!ocsSemCad[oc]) ocsSemCad[oc] = { oc, eventoSugerido: ev, count: 0 };
+        ocsSemCad[oc].count++;
+      }
+      if (plano && !planosExist.has(plano)) {
+        if (!planosSemCad[plano]) planosSemCad[plano] = { plano, eventoSugerido: ev, count: 0 };
+        planosSemCad[plano].count++;
+      }
+    });
+
+    res.json({
+      ok: true,
+      ocs:     Object.values(ocsSemCad).sort((a,b)    => b.count - a.count),
+      planos:  Object.values(planosSemCad).sort((a,b) => b.count - a.count),
+      eventos: eventos.map(e => ({ codigo: e.codigo, nome: e.nome })),
+    });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
 // EDITAR CAMPO DE VENDA — atualiza OC ou Plano na planilha VENDAS
 // ====================================================
 router.post('/editar_venda_campo', async (req, res) => {
