@@ -1769,7 +1769,7 @@ router.post('/gerar_links', async (req, res) => {
       .map((row, i) => {
         const id = String(row[idxID] || '').trim();
         if (!id) return null;
-        const link = `https://central.ignicaodigital.com.br/payment/${id}/details`;
+        const link = `=HYPERLINK("https://central.ignicaodigital.com.br/payment/${id}/details","${id}")`;
         return { range: `${ABA.VENDAS}!${colLink}${i + 2}`, values: [[link]] };
       })
       .filter(Boolean);
