@@ -600,7 +600,7 @@ const CadEventos = {
     res_el.textContent = 'Processando...';
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+      const timer = setTimeout(() => controller.abort(), 15 * 60 * 1000);
       const raw = await fetch('/api/reprocessar_ocs_planos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1362,7 +1362,7 @@ const CadOCs = {
     res_el.textContent = 'Processando... pode demorar alguns minutos.';
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+      const timer = setTimeout(() => controller.abort(), 15 * 60 * 1000);
       const raw = await fetch('/api/reprocessar_tudo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1372,7 +1372,7 @@ const CadOCs = {
       clearTimeout(timer);
       const res = await raw.json();
       if (res.erro) throw new Error(res.erro);
-      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados||0} vendas atualizadas!</span>`;
+      res_el.innerHTML = `<span style="color:var(--green)">✓ Processamento iniciado! Acompanhe os logs do Render. O cache será atualizado automaticamente.</span>`;
     } catch(e) {
       res_el.innerHTML = `<span style="color:var(--red)">Erro: ${e.message}</span>`;
     }
@@ -1386,7 +1386,7 @@ const CadOCs = {
     res_el.textContent = 'Processando...';
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+      const timer = setTimeout(() => controller.abort(), 15 * 60 * 1000);
       const raw = await fetch('/api/reprocessar_ocs_planos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1425,7 +1425,7 @@ const CadOCs = {
     try {
       const res = await API.reprocessarTodasCategorias();
       if (res.erro) throw new Error(res.erro);
-      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados||0} vendas atualizadas!</span>`;
+      res_el.innerHTML = `<span style="color:var(--green)">✓ Processamento iniciado! Acompanhe os logs do Render. O cache será atualizado automaticamente.</span>`;
     } catch {
       res_el.innerHTML = `<span style="color:var(--red)">Erro ao reprocessar</span>`;
     }
