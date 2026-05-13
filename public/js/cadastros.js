@@ -1324,12 +1324,22 @@ const CadOCs = {
     const btn = document.getElementById('btn-rep-tudo');
     const res_el = document.getElementById('res-tudo');
     Utils.btnLoading(btn, true);
-    res_el.textContent = 'Processando... pode demorar alguns segundos.';
+    res_el.textContent = 'Processando... pode demorar alguns minutos.';
     try {
-      const res = await API.post('reprocessar_tudo', {});
-      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados} vendas e ${res.atualizadosOCS||0} OCs atualizadas!</span>`;
-    } catch {
-      res_el.innerHTML = `<span style="color:var(--red)">Erro ao reprocessar</span>`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+      const raw = await fetch('/api/reprocessar_tudo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const res = await raw.json();
+      if (res.erro) throw new Error(res.erro);
+      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados||0} vendas e ${res.atualizadosOCS||0} OCs atualizadas!</span>`;
+    } catch(e) {
+      res_el.innerHTML = `<span style="color:var(--red)">Erro: ${e.message}</span>`;
     }
     Utils.btnLoading(btn, false);
   },
@@ -1355,7 +1365,8 @@ const CadOCs = {
     res_el.textContent = 'Processando... pode demorar alguns segundos.';
     try {
       const res = await API.reprocessarTodasCategorias();
-      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados} vendas e ${res.atualizadosOCS||0} OCs atualizadas!</span>`;
+      if (res.erro) throw new Error(res.erro);
+      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados||0} vendas e ${res.atualizadosOCS||0} OCs atualizadas!</span>`;
     } catch {
       res_el.innerHTML = `<span style="color:var(--red)">Erro ao reprocessar</span>`;
     }
