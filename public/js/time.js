@@ -220,8 +220,10 @@ const Time = {
     const corBord = pct >= 100 ? 'rgba(76,175,80,.3)' : pct >= 60 ? 'rgba(255,152,0,.3)' : 'rgba(232,93,93,.3)';
 
     return `
-      <div style="background:var(--bg-2);border:1px solid ${corBord};border-radius:var(--r3);padding:var(--s4);transition:box-shadow .2s"
-        onmouseenter="this.style.boxShadow='0 0 0 1px ${corBord}'" onmouseleave="this.style.boxShadow=''">
+      <div onclick="Time._abrirEquipe('${eq.nome}')" style="background:var(--bg-2);border:1px solid ${corBord};border-radius:var(--r3);
+        padding:var(--s4);transition:all .2s;cursor:pointer"
+        onmouseenter="this.style.boxShadow='0 4px 20px rgba(0,0,0,.3)';this.style.transform='translateY(-2px)'"
+        onmouseleave="this.style.boxShadow='';this.style.transform=''">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:var(--s3)">
           <div>
             <div style="font-size:14px;font-weight:700;color:var(--text)">${eq.nome}</div>
@@ -266,6 +268,115 @@ const Time = {
             <div style="width:6px;height:6px;border-radius:50%;background:#f87171"></div>${eq.vermelho}
           </div>
         </div>
+      </div>`;
+  },
+
+  // ==================== DETALHE DA EQUIPE ====================
+  _abrirEquipe(nomeEquipe) {
+    const el = document.getElementById('time-main');
+    if (!el || !this._dados) return;
+
+    const { equipes, semaforo, ranking, meta } = this._dados;
+    const eq = equipes.find(e => e.nome === nomeEquipe);
+    if (!eq) return;
+
+    const metaEq    = Math.round((meta.meta || 375) / equipes.length);
+    const pct       = metaEq ? Math.min(100, Math.round(eq.hc / metaEq * 100)) : 0;
+    const corPct    = pct >= 100 ? '#4caf50' : pct >= 60 ? '#ff9800' : '#e85d5d';
+    const rankingEq = ranking.filter(v => semaforo.find(s => s.codigo === v.codigo && s.equipe === nomeEquipe));
+    const semaforoEq = eq.vendedores;
+
+    el.innerHTML = `
+      <!-- Header com voltar -->
+      <div style="display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s4)">
+        <button onclick="Time._renderVisao()" class="btn btn-sm btn-secondary">← Voltar</button>
+        <div>
+          <div style="font-size:18px;font-weight:800;color:var(--text)">${nomeEquipe}</div>
+          <div style="font-size:11px;color:var(--text-3)">${eq.vendedores.length} vendedores</div>
+        </div>
+      </div>
+
+      <!-- Métricas do time -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:var(--s3);margin-bottom:var(--s4)">
+        ${this._card('TOTAL HC', eq.hc, 'headcounts', 'var(--accent)')}
+        ${this._card('VENDAS', eq.vendas, 'realizadas', 'var(--text)')}
+        ${this._card('FATURAMENTO', 'R$ ' + eq.fat.toLocaleString('pt-BR',{minimumFractionDigits:2}), 'no período', '#4caf50')}
+        ${this._card('META HC', pct + '%', eq.hc + ' / ' + metaEq + ' HCs', corPct)}
+        ${this._card('EM DIA', eq.verde, 'vendedores', '#4ade80')}
+        ${this._card('ATENÇÃO', eq.amarelo, 'vendedores', '#fbbf24')}
+        ${this._card('RISCO', eq.vermelho, 'vendedores', '#f87171')}
+      </div>
+
+      <!-- Barra de progresso da meta -->
+      <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r3);padding:var(--s4);margin-bottom:var(--s4)">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)">Progresso da Meta</div>
+          <div style="font-size:14px;font-weight:800;color:${corPct}">${pct}%</div>
+        </div>
+        <div style="background:var(--bg-3);border-radius:99px;height:8px;overflow:hidden">
+          <div style="height:100%;border-radius:99px;background:${corPct};width:${pct}%;transition:width .8s"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:6px">${eq.hc} de ${metaEq} HCs · ${metaEq - eq.hc > 0 ? 'Faltam ' + (metaEq - eq.hc) + ' HCs' : '✓ Meta atingida!'}</div>
+      </div>
+
+      <!-- Cards dos vendedores -->
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3);margin-bottom:var(--s3)">Vendedores</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--s3);margin-bottom:var(--s4)">
+        ${semaforoEq.map(v => {
+          const rv   = rankingEq.find(r => r.codigo === v.codigo) || {};
+          const cor  = { verde:'#4ade80', amarelo:'#fbbf24', vermelho:'#f87171' }[v.status] || '#f87171';
+          const bg   = { verde:'rgba(74,222,128,.06)', amarelo:'rgba(251,191,36,.06)', vermelho:'rgba(248,113,113,.06)' }[v.status] || '';
+          let dias = v.diasSemVenda || 0;
+          if (v.ultimaVenda) {
+            const hoje  = new Date(); hoje.setHours(0,0,0,0);
+            const ultim = new Date(v.ultimaVenda + 'T00:00:00');
+            dias = Math.floor((hoje - ultim) / 86400000);
+          }
+          const hc  = rv.headcounts  || 0;
+          const vnd = rv.vendas      || 0;
+          const fat = rv.faturamento || 0;
+          const iniciais = (v.apelido||v.nome||'?').split(' ').slice(0,2).map(p=>p[0]).join('').toUpperCase();
+
+          return `
+            <div onclick="Vendedor.abrir('${v.codigo}')" style="background:${bg};border:1px solid ${cor}33;border-radius:var(--r3);
+              padding:var(--s4);cursor:pointer;transition:all .2s"
+              onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 16px rgba(0,0,0,.2)'"
+              onmouseleave="this.style.transform='';this.style.boxShadow=''">
+              <!-- Avatar e nome -->
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:var(--s3)">
+                <div style="width:36px;height:36px;border-radius:50%;background:${cor}22;border:2px solid ${cor}66;
+                  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${cor};flex-shrink:0">
+                  ${iniciais}
+                </div>
+                <div style="min-width:0">
+                  <div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.apelido||v.nome}</div>
+                  <div style="font-size:10px;color:var(--text-3)">${v.nivel||'JUNIOR'} · ${v.codigo}</div>
+                </div>
+                <div style="width:8px;height:8px;border-radius:50%;background:${cor};box-shadow:0 0 6px ${cor};flex-shrink:0;margin-left:auto"></div>
+              </div>
+
+              <!-- Métricas -->
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:var(--s3);text-align:center">
+                <div>
+                  <div style="font-size:18px;font-weight:800;color:var(--accent)">${hc}</div>
+                  <div style="font-size:9px;color:var(--text-3);text-transform:uppercase">HC</div>
+                </div>
+                <div>
+                  <div style="font-size:18px;font-weight:800;color:var(--text)">${vnd}</div>
+                  <div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Vendas</div>
+                </div>
+                <div>
+                  <div style="font-size:12px;font-weight:700;color:#4caf50">R$ ${(fat/1000).toFixed(1)}k</div>
+                  <div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Fat.</div>
+                </div>
+              </div>
+
+              <!-- Status -->
+              <div style="font-size:11px;font-weight:600;color:${cor};text-align:center">
+                ${dias === 0 ? '✓ Vendeu hoje' : dias + 'd sem venda'}
+              </div>
+            </div>`;
+        }).join('')}
       </div>`;
   },
 
