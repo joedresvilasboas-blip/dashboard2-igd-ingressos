@@ -241,6 +241,53 @@ router.get('/estrelas', async (req, res) => {
 // ====================================================
 // RANKING
 // ====================================================
+// ====================================================
+// RANKING TIME — aceita filtros de mês, semana, evento, canal, status
+// ====================================================
+router.post('/ranking_time', async (req, res) => {
+  try {
+    const { strIni, strFim, canal, evento, status } = req.body;
+    const colMap  = await getColMap();
+    const dados   = await getVendasRows();
+    const vends   = await getVendedores();
+    const mapaApelido = {};
+    vends.forEach(v => { mapaApelido[v.codigo] = { apelido: v.apelido || v.nome, equipe: v.equipe, nivel: v.nivel }; });
+
+    const indMap = {};
+    dados.forEach(row => {
+      const canalRow  = String(vRow(row, colMap, 'CANAL') || '').trim();
+      const eventoRow = String(vRow(row, colMap, 'EVENTO')|| '').trim();
+      const statusRow = String(vRow(row, colMap, 'STATUS')|| '').trim().toUpperCase();
+      const strD      = toDateStr(vRow(row, colMap, 'DT_PAG'));
+
+      // Filtros
+      if (canal  && canalRow  !== canal)  return;
+      if (evento && eventoRow !== evento) return;
+      if (status && statusRow !== status) return;
+      if (!strD) return;
+      if (strIni && strD < strIni) return;
+      if (strFim && strD > strFim) return;
+      // Canal padrão: só VA e RC se não filtrado
+      if (!canal && canalRow !== 'VA SALES' && canalRow !== 'RC SALES') return;
+
+      const cod  = String(vRow(row, colMap, 'COD_VEND') || '').trim();
+      const nome = String(vRow(row, colMap, 'NOME_VEND')|| '').trim();
+      const hc   = parseFloat(vRow(row, colMap, 'HC'))   || 0;
+      const val  = parseFloat(String(vRow(row, colMap, 'VALOR')||'0').replace('R$','').replace(/[\s.]/g,'').replace(',','.')) || 0;
+      const pts  = parseFloat(vRow(row, colMap, 'PONTOS'))|| 0;
+
+      if (!indMap[cod]) indMap[cod] = { codigo: cod, nome, apelido: mapaApelido[cod]?.apelido || nome, headcounts: 0, vendas: 0, faturamento: 0, pontos: 0 };
+      indMap[cod].headcounts  += hc;
+      indMap[cod].vendas      += 1;
+      indMap[cod].faturamento += val;
+      indMap[cod].pontos      += pts;
+    });
+
+    const individual = Object.values(indMap).sort((a,b) => b.headcounts - a.headcounts);
+    res.json({ ok: true, individual });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
 router.post('/ranking', async (req, res) => {
   try {
     const { strIni, strFim, semNum } = req.body;
