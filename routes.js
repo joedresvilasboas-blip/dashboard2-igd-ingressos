@@ -1507,6 +1507,11 @@ router.post('/reprocessar_tudo', async (req, res) => {
       campos.equipe.push([equipe]);
     }
 
+    // Debug: mostra primeiros 5 valores de semana e mes
+    console.log('[REPROCESSAR] Semanas[0-4]:', campos.semana.slice(0,5).map(x=>x[0]));
+    console.log('[REPROCESSAR] Mes[0-4]:', campos.mes.slice(0,5).map(x=>x[0]));
+    console.log('[REPROCESSAR] Total campos:', campos.semana.length, 'linhas');
+
     // Envia cada campo como uma coluna inteira — apenas 10 chamadas no total
     const colLetra = n => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26))+String.fromCharCode(65+(n%26));
     const linhaIni = 2;
