@@ -6,7 +6,7 @@ const router = express.Router();
 const { lerAba, escreverRange, adicionarLinhas } = require('./sheets');
 const {
   getVendasRows, getVendedores, getEquipes, getEventos,
-  getOCs, getCalendario, getConfig, getRegrasCanal, invalidarCache, getColMap
+  getOCs, getCalendario, getConfig, getRegrasCanal, invalidarCache, getColMap, resetColMap
 } = require('./data');
 const { ABA, V_NOMES } = require('./cache');
 const {
@@ -1346,6 +1346,8 @@ router.post('/reprocessar_tudo', async (req, res) => {
     const api = google.sheets({ version: 'v4', auth });
 
     del('calendario');
+    // Invalida colMap para reler o cabeçalho caso colunas tenham sido reorganizadas
+    resetColMap();
 
     const colMap  = await getColMap();
     const rows    = await getVendasRows();
