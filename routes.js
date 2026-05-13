@@ -1380,6 +1380,10 @@ router.post('/reprocessar_todas_categorias', async (req, res) => {
 // REPROCESSAR TUDO — semana, mês, canal, categoria, pontos, evento
 // ====================================================
 router.post('/reprocessar_tudo', async (req, res) => {
+  // Responde imediatamente e processa em background
+  res.json({ ok: true, msg: 'Processamento iniciado', atualizados: null });
+
+  setImmediate(async () => {
   try {
     const { del } = require('./cache');
     const sheetsModule = require('./sheets');
@@ -1492,36 +1496,23 @@ router.post('/reprocessar_tudo', async (req, res) => {
       const hc = extrairHC(plano);
 
       const linhaPlan = i + 2;
-      const colLetra = n => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26))+String.fromCharCode(65+(n%26));
+      const col = c => {
+        const n = idx[c];
+        if (n === undefined) return null;
+        return n < 26 ? String.fromCharCode(65 + n) : String.fromCharCode(64 + Math.floor(n/26)) + String.fromCharCode(65 + (n%26));
+      };
+      const push = (c, v) => { const colLetra = col(c); if (colLetra) data.push({ range: `${ABA.VENDAS}!${colLetra}${linhaPlan}`, values: [[v]] }); };
 
-      // Agrupa campos em ranges contíguos para minimizar chamadas
-      // Cada push é um range que pode cobrir vários campos adjacentes
-      const campos = [
-        { c: 'canal',      v: canal      },
-        { c: 'canalMacro', v: canalMacro },
-        { c: 'categoria',  v: categoria  },
-        { c: 'hc',         v: hc         },
-        { c: 'pontos',     v: pontos     },
-        { c: 'semana',     v: semana     },
-        { c: 'mes',        v: mes        },
-        { c: 'evento',     v: evento     },
-        { c: 'nomeVend',   v: nomeVend   },
-        { c: 'equipe',     v: equipe     },
-      ].filter(x => idx[x.c] !== undefined);
-
-      // Tenta agrupar campos adjacentes em um único range
-      campos.sort((a,b) => idx[a.c] - idx[b.c]);
-      let j = 0;
-      while (j < campos.length) {
-        let k = j;
-        // Agrupa enquanto colunas forem consecutivas
-        while (k + 1 < campos.length && idx[campos[k+1].c] === idx[campos[k].c] + 1) k++;
-        const colIni = colLetra(idx[campos[j].c]);
-        const colFim = colLetra(idx[campos[k].c]);
-        const valores = campos.slice(j, k+1).map(x => x.v);
-        data.push({ range: `${ABA.VENDAS}!${colIni}${linhaPlan}:${colFim}${linhaPlan}`, values: [valores] });
-        j = k + 1;
-      }
+      push('canal',      canal);
+      push('canalMacro', canalMacro);
+      push('categoria',  categoria);
+      push('pontos',     pontos);
+      push('hc',         hc);
+      push('semana',     semana);
+      push('mes',        mes);
+      push('evento',     evento);
+      push('nomeVend',   nomeVend);
+      push('equipe',     equipe);
     }
 
     const BLOCO = 500;
@@ -1535,9 +1526,8 @@ router.post('/reprocessar_tudo', async (req, res) => {
 
     del('vendas_rows');
     console.log(`[REPROCESSAR] Concluído: ${rows.length} vendas`);
-    res.json({ ok: true, atualizados: rows.length });
-
-  } catch(e) { res.json({ erro: e.message }); }
+  } catch(e) { console.error('[REPROCESSAR] Erro:', e.message); }
+  }); // fim setImmediate
 });
 
 // ====================================================
