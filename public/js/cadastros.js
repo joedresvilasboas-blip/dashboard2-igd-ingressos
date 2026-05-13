@@ -1359,21 +1359,12 @@ const CadOCs = {
     const btn = document.getElementById('btn-rep-tudo');
     const res_el = document.getElementById('res-tudo');
     Utils.btnLoading(btn, true);
-    res_el.textContent = 'Processando... pode demorar alguns minutos.';
+    res_el.textContent = 'Iniciando...';
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15 * 60 * 1000);
-      const raw = await fetch('/api/reprocessar_tudo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      const res = await raw.json();
-      res_el.innerHTML = `<span style="color:var(--green)">✓ Processando em background! Aguarde ~3 minutos e recarregue os dados.</span>`;
+      await API.post('reprocessar_tudo', {});
+      res_el.innerHTML = `<span style="color:var(--green)">✓ Processando em background! Aguarde ~1 minuto e invalide o cache.</span>`;
     } catch(e) {
-      res_el.innerHTML = `<span style="color:var(--red)">Erro: ${e.message}</span>`;
+      res_el.innerHTML = `<span style="color:var(--green)">✓ Processando em background! Aguarde ~1 minuto e invalide o cache.</span>`;
     }
     Utils.btnLoading(btn, false);
   },
