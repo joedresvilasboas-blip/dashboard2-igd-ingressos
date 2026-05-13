@@ -1752,25 +1752,17 @@ router.post('/gerar_links', async (req, res) => {
     const rows   = await getVendasRows();
     const idxID  = colMap[V_NOMES['ID']];
 
-    // Verifica se coluna LINK já existe, senão usa próxima coluna disponível
-    let idxLink = colMap['LINK'];
-    if (idxLink === undefined) {
-      // Adiciona cabeçalho LINK na próxima coluna
-      const header = await lerAba(ABA.VENDAS);
-      idxLink = header[0].length; // próxima coluna
-      const colLetra = (n) => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26)) + String.fromCharCode(65+(n%26));
-      await escreverRange(`${ABA.VENDAS}!${colLetra(idxLink)}1`, [['LINK']]);
-    }
-
     const colLetra = (n) => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26)) + String.fromCharCode(65+(n%26));
-    const colLink = colLetra(idxLink);
+    const colID = colLetra(idxID);
 
+    // Substitui o valor do ID_CENTRAL pela fórmula HYPERLINK
     const data = rows
       .map((row, i) => {
         const id = String(row[idxID] || '').trim();
         if (!id) return null;
-        const link = `=HYPERLINK("https://central.ignicaodigital.com.br/payment/${id}/details","${id}")`;
-        return { range: `${ABA.VENDAS}!${colLink}${i + 2}`, values: [[link]] };
+        const url  = 'https://central.ignicaodigital.com.br/payment/' + id + '/details';
+        const link = '=HYPERLINK("' + url + '","' + id + '")';
+        return { range: `${ABA.VENDAS}!${colID}${i + 2}`, values: [[link]] };
       })
       .filter(Boolean);
 
