@@ -234,50 +234,6 @@ router.get('/estrelas', async (req, res) => {
       if (o[a.nivel] !== o[b.nivel]) return o[a.nivel] - o[b.nivel];
       return b.estrelas - a.estrelas;
     });
-
-    // Atualiza nivel na planilha quando houver promoção
-    const promoções = vendedores.filter(v => {
-      const vend = vends.find(x => x.codigo === v.codigo);
-      return vend && vend.nivel !== v.nivel &&
-        // Só promove, nunca rebaixa
-        (v.nivel === 'SENIOR' || (v.nivel === 'PLENO' && vend.nivel === 'JUNIOR'));
-    });
-
-    if (promoções.length) {
-      const { del } = require('./cache');
-      const sheetsModule = require('./sheets');
-      const { google } = require('googleapis');
-      const auth = new google.auth.JWT(
-        process.env.GOOGLE_CLIENT_EMAIL, null,
-        (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
-        ['https://www.googleapis.com/auth/spreadsheets']
-      );
-      const api = google.sheets({ version: 'v4', auth });
-
-      // Lê aba VENDEDORES para encontrar linha de cada vendedor
-      const rowsVend = await lerAba(ABA.VENDEDORES);
-      const data = [];
-      promoções.forEach(p => {
-        const linhaPlan = rowsVend.findIndex(r => String(r[0]||'').trim() === p.codigo);
-        if (linhaPlan < 1) return; // não encontrou ou é cabeçalho
-        console.log(`[ESTRELAS] Promovendo ${p.codigo} ${p.nome}: ${vends.find(x=>x.codigo===p.codigo)?.nivel} → ${p.nivel}`);
-        data.push({ range: `${ABA.VENDEDORES}!E${linhaPlan + 1}`, values: [[p.nivel]] });
-      });
-
-      if (data.length) {
-        await api.spreadsheets.values.batchUpdate({
-          spreadsheetId: sheetsModule.SPREADSHEET_ID,
-          requestBody: { valueInputOption: 'USER_ENTERED', data },
-        });
-        del('vendedores');
-        // Atualiza nivel no objeto retornado
-        promoções.forEach(p => {
-          const vend = vends.find(x => x.codigo === p.codigo);
-          if (vend) vend.nivel = p.nivel;
-        });
-      }
-    }
-
     res.json({ vendedores });
   } catch(e) { res.json({ erro: e.message }); }
 });
@@ -918,7 +874,6 @@ router.post('/upload_csv', async (req, res) => {
 
     let importados = 0, atualizados = 0, erros = 0;
     const novasLinhas = [], linhasAtualizar = [];
-    const ocsNaoId = new Set(); // OCs que não têm cadastro
 
     for (const l of linhas) {
       const id = String(l['Id da Central']||'').trim();
@@ -940,8 +895,6 @@ router.post('/upload_csv', async (req, res) => {
 
       const vend     = mapaVend[codVend] || { nome:'⚠️ NÃO CADASTRADO', equipe:'', nivel:'JUNIOR' };
       const ocInfo   = mapaOC[oc+'|'+plano] || mapaOC[oc] || {};
-      // Registra OC sem cadastro (sem canal identificado)
-      if (oc && !ocInfo.canal) ocsNaoId.add(oc);
       const inferido = await inferirCanal(oc, plano);
       const canal    = ocInfo.canal      || inferido.canal;
       const canalMacro = ocInfo.canalMacro || inferido.canalMacro;
@@ -1031,7 +984,7 @@ router.post('/upload_csv', async (req, res) => {
     }
 
     del('vendas_rows');
-    res.json({ importados, atualizados, erros, ocsNaoId: [...ocsNaoId], planosNaoId:[], semCanal:[] });
+    res.json({ importados, atualizados, erros, ocsNaoId:[], planosNaoId:[], semCanal:[] });
   } catch(e) { res.json({ erro: e.message }); }
 });
 
@@ -1380,7 +1333,6 @@ router.post('/reprocessar_todas_categorias', async (req, res) => {
 // REPROCESSAR TUDO — semana, mês, canal, categoria, pontos, evento
 // ====================================================
 router.post('/reprocessar_tudo', async (req, res) => {
-  // Responde imediatamente — processa em background
   res.json({ ok: true, atualizados: 0, msg: 'iniciado' });
   try {
     const { del } = require('./cache');
@@ -1428,17 +1380,6 @@ router.post('/reprocessar_tudo', async (req, res) => {
       mes:        colMap[V_NOMES['MES']],
       evento:     colMap[V_NOMES['EVENTO']],
     };
-
-    // Log para debug do calendário
-    console.log(`[REPROCESSAR] Calendário: ${sems.length} semanas, primeira: ${sems[0]?.strIni} → ${sems[0]?.strFim}, última: ${sems[sems.length-1]?.strIni} → ${sems[sems.length-1]?.strFim}`);
-    // Log de uma venda de exemplo
-    if (rows.length > 0) {
-      const r0 = rows[0];
-      const dtEx = String(r0[idx.dtPag]||'').trim();
-      const m1ex = dtEx.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-      const strEx = m1ex ? `${m1ex[3]}-${m1ex[2].padStart(2,'0')}-${m1ex[1].padStart(2,'0')}` : dtEx.slice(0,10);
-      console.log(`[REPROCESSAR] Exemplo venda[0]: dtPag="${dtEx}" → strD="${strEx}"`);
-    }
 
     const data = [];
     for (let i = 0; i < rows.length; i++) {
@@ -1490,16 +1431,17 @@ router.post('/reprocessar_tudo', async (req, res) => {
       const nomeVend = vendInfo.nome   || String(row[idx.nomeVend] || '').trim();
       const equipe   = vendInfo.equipe || String(row[idx.equipe]   || '').trim();
 
-      // HC — extraído do plano
-      const hc = extrairHC(plano);
-
       const linhaPlan = i + 2;
       const col = c => {
         const n = idx[c];
         if (n === undefined) return null;
         return n < 26 ? String.fromCharCode(65 + n) : String.fromCharCode(64 + Math.floor(n/26)) + String.fromCharCode(65 + (n%26));
       };
+
       const push = (c, v) => { const colLetra = col(c); if (colLetra) data.push({ range: `${ABA.VENDAS}!${colLetra}${linhaPlan}`, values: [[v]] }); };
+
+      // HC — extraído do plano
+      const hc = extrairHC(plano);
 
       push('canal',      canal);
       push('canalMacro', canalMacro);
@@ -1513,51 +1455,7 @@ router.post('/reprocessar_tudo', async (req, res) => {
       push('equipe',     equipe);
     }
 
-    // Blocos pequenos com pausa para respeitar quota do Sheets
-    const BLOCO = 100;
-    const PAUSA = 2000; // 2s entre blocos
-    for (let i = 0; i < data.length; i += BLOCO) {
-      await api.spreadsheets.values.batchUpdate({
-        spreadsheetId: sheetsModule.SPREADSHEET_ID,
-        requestBody: { valueInputOption: 'USER_ENTERED', data: data.slice(i, i + BLOCO) },
-      });
-      if (i + BLOCO < data.length) await new Promise(r => setTimeout(r, PAUSA));
-    }
-
-    del('vendas_rows');
-    console.log(`[REPROCESSAR] Concluído: ${rows.length} vendas`);
-  } catch(e) { console.error('[REPROCESSAR] Erro:', e.message); }
-});
-
-// ====================================================
-// REPROCESSAR OCS_PLANOS — atualiza CANAL, CATEGORIA e CANAL_MACRO
-// ====================================================
-router.post('/reprocessar_ocs_planos', async (req, res) => {
-  try {
-    const { del } = require('./cache');
-    const sheetsModule = require('./sheets');
-    const { google } = require('googleapis');
-    const auth = new google.auth.JWT(
-      process.env.GOOGLE_CLIENT_EMAIL, null,
-      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
-      ['https://www.googleapis.com/auth/spreadsheets']
-    );
-    const api = google.sheets({ version: 'v4', auth });
-
-    const ocsRows = await lerAba(ABA.OCS);
-    const data = [];
-    for (let i = 1; i < ocsRows.length; i++) {
-      const r  = ocsRows[i];
-      const oc = String(r[0]||'').trim();
-      const pl = String(r[1]||'').trim();
-      if (!oc && !pl) continue;
-      const inf = await inferirCanal(oc, pl);
-      const canalFinal = inf.canal || String(r[3]||'').trim();
-      const macroFinal = inf.canalMacro || String(r[5]||'').trim();
-      const catOCS     = inferirCategoria(pl);
-      data.push({ range: `${ABA.OCS}!D${i+1}:F${i+1}`, values: [[canalFinal, catOCS, macroFinal]] });
-    }
-
+    // Processa em blocos com pausa para não estourar cota
     const BLOCO = 500;
     for (let i = 0; i < data.length; i += BLOCO) {
       await api.spreadsheets.values.batchUpdate({
@@ -1567,9 +1465,9 @@ router.post('/reprocessar_ocs_planos', async (req, res) => {
       if (i + BLOCO < data.length) await new Promise(r => setTimeout(r, 500));
     }
 
-    del('ocs');
-    res.json({ ok: true, atualizados: data.length });
-  } catch(e) { res.json({ erro: e.message }); }
+    del('vendas_rows');
+    console.log(`[REPROCESSAR] Concluído: ${rows.length} vendas, ${data.length} campos atualizados`);
+  } catch(e) { console.error('[REPROCESSAR] Erro:', e.message); }
 });
 
 // ====================================================
@@ -2011,468 +1909,7 @@ router.post('/relatorio_dinamico', async (req, res) => {
   } catch(e) { res.json({ erro: e.message }); }
 });
 
-// ====================================================
-// VERIFICAR INCONSISTÊNCIAS — OC e Plano de eventos diferentes
-// Cruza eventoCod da OC vs eventoCod do Plano na aba OCS_PLANOS
-// ====================================================
-router.post('/verificar_inconsistencias', async (req, res) => {
-  try {
-    const colMap  = await getColMap();
-    const rows    = await getVendasRows();
-    const ocs     = await getOCs();
-    const eventos = await getEventos();
-
-    // Mapa separado: OC → eventoCod e Plano → eventoCod
-    const mapaOC    = {}; // oc → eventoCod
-    const mapaPlano = {}; // plano → eventoCod
-    ocs.forEach(o => {
-      if (o.oc)    mapaOC[o.oc.trim()]       = o.eventoCod || '';
-      if (o.plano) mapaPlano[o.plano.trim()]  = o.eventoCod || '';
-    });
-
-    // Mapa eventoCod → nome do evento
-    const mapaEvento = {};
-    eventos.forEach(e => { mapaEvento[e.codigo] = e.nome; });
-
-    const inconsistencias = [];
-
-    rows.forEach((row, i) => {
-      const id    = String(vRow(row, colMap, 'ID')       || '').trim();
-      const oc    = String(vRow(row, colMap, 'OC')       || '').trim();
-      const plano = String(vRow(row, colMap, 'PLANO')    || '').trim();
-      if (!oc || !plano) return;
-
-      const evCodOC    = mapaOC[oc]       || '';
-      const evCodPlano = mapaPlano[plano] || '';
-
-      // Só verifica se ambos têm evento cadastrado
-      if (!evCodOC || !evCodPlano) return;
-
-      // Inconsistência: eventos diferentes
-      if (evCodOC !== evCodPlano) {
-        inconsistencias.push({
-          linha:      i + 2,
-          id,
-          oc,
-          plano,
-          eventoOC:   mapaEvento[evCodOC]    || evCodOC,
-          eventoPlano: mapaEvento[evCodPlano] || evCodPlano,
-          eventoAtual: String(vRow(row, colMap, 'EVENTO') || '').trim(),
-          link:    id ? `https://central.ignicaodigital.com.br/payment/${id}/details` : '',
-          codVend:  String(vRow(row, colMap, 'COD_VEND')  || '').trim(),
-          nomeVend: String(vRow(row, colMap, 'NOME_VEND') || '').trim(),
-          dtPag:    String(vRow(row, colMap, 'DT_PAG')    || '').trim(),
-        });
-      }
-    });
-
-    res.json({ ok: true, total: inconsistencias.length, inconsistencias });
-  } catch(e) { res.json({ erro: e.message }); }
-});
-
-// ====================================================
-// LISTAR OCS_PLANOS — retorna todos agrupados por evento
-// ====================================================
-router.get('/listar_ocs_planos', async (req, res) => {
-  try {
-    const ocs     = await getOCs();
-    const eventos = await getEventos();
-
-    const mapaEvento = {};
-    eventos.forEach(e => { mapaEvento[e.codigo] = e.nome; });
-
-    // Agrupa por eventoCod
-    const grupos = {};
-    ocs.forEach(o => {
-      const evCod  = o.eventoCod || '';
-      const evNome = mapaEvento[evCod] || evCod || '(sem evento)';
-      if (!grupos[evCod]) grupos[evCod] = { eventoCod: evCod, eventoNome: evNome, itens: [] };
-      grupos[evCod].itens.push({
-        oc:         o.oc,
-        plano:      o.plano,
-        canal:      o.canal,
-        categoria:  o.categoria,
-        canalMacro: o.canalMacro,
-      });
-    });
-
-    const lista = Object.values(grupos).sort((a,b) => (a.eventoNome||'').localeCompare(b.eventoNome||''));
-    const eventosLista = eventos.map(e => ({ codigo: e.codigo, nome: e.nome }));
-    res.json({ ok: true, grupos: lista, eventos: eventosLista });
-  } catch(e) { res.json({ erro: e.message }); }
-});
-
-// ====================================================
-// MOVER OCS EM LOTE — move várias OCs para outro evento
-// ====================================================
-router.post('/mover_ocs_evento', async (req, res) => {
-  try {
-    const { ocs: ocsParaMover, novoEventoCod } = req.body;
-    if (!ocsParaMover?.length || !novoEventoCod) return res.json({ erro: 'Parâmetros inválidos' });
-
-    const sheetsModule = require('./sheets');
-    const { google }   = require('googleapis');
-    const auth = new google.auth.JWT(
-      process.env.GOOGLE_CLIENT_EMAIL, null,
-      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
-      ['https://www.googleapis.com/auth/spreadsheets']
-    );
-    const api = google.sheets({ version: 'v4', auth });
-
-    const rows   = await lerAba(ABA.OCS);
-    const ocSet  = new Set(ocsParaMover.map(o => o.trim()));
-    const data   = [];
-
-    rows.forEach((r, i) => {
-      if (i === 0) return;
-      if (ocSet.has(String(r[0]||'').trim())) {
-        data.push({ range: `${ABA.OCS}!C${i + 1}`, values: [[novoEventoCod]] });
-      }
-    });
-
-    if (!data.length) return res.json({ erro: 'Nenhuma OC encontrada' });
-
-    const BLOCO = 500;
-    for (let i = 0; i < data.length; i += BLOCO) {
-      await api.spreadsheets.values.batchUpdate({
-        spreadsheetId: sheetsModule.SPREADSHEET_ID,
-        requestBody: { valueInputOption: 'USER_ENTERED', data: data.slice(i, i + BLOCO) },
-      });
-    }
-
-    const { del } = require('./cache');
-    del('ocs');
-    res.json({ ok: true, atualizadas: data.length });
-  } catch(e) { res.json({ erro: e.message }); }
-});
-
-// ====================================================
-// CORRIGIR OC NO CADASTRO — muda eventoCod de uma OC na aba OCS_PLANOS
-// ====================================================
-router.post('/corrigir_oc_cadastro', async (req, res) => {
-  try {
-    const { oc, novoEventoCod } = req.body;
-    if (!oc || !novoEventoCod) return res.json({ erro: 'Parâmetros inválidos' });
-
-    const sheetsModule = require('./sheets');
-    const { google } = require('googleapis');
-    const auth = new google.auth.JWT(
-      process.env.GOOGLE_CLIENT_EMAIL, null,
-      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
-      ['https://www.googleapis.com/auth/spreadsheets']
-    );
-    const api = google.sheets({ version: 'v4', auth });
-
-    // Lê OCS_PLANOS para encontrar a linha da OC
-    const rows = await lerAba(ABA.OCS);
-    // Cabeçalho: OC | PLANO | EVENTO_COD | CANAL | CATEGORIA | CANAL_MACRO
-    const linhasOC = [];
-    rows.forEach((r, i) => {
-      if (i === 0) return; // pula cabeçalho
-      if (String(r[0]||'').trim() === oc.trim()) linhasOC.push(i + 1);
-    });
-
-    if (!linhasOC.length) return res.json({ erro: `OC "${oc}" não encontrada no cadastro` });
-
-    // Atualiza coluna C (eventoCod) em todas as linhas da OC
-    const data = linhasOC.map(linha => ({
-      range: `${ABA.OCS}!C${linha}`,
-      values: [[novoEventoCod]],
-    }));
-
-    await api.spreadsheets.values.batchUpdate({
-      spreadsheetId: sheetsModule.SPREADSHEET_ID,
-      requestBody: { valueInputOption: 'USER_ENTERED', data },
-    });
-
-    const { del } = require('./cache');
-    del('ocs');
-    res.json({ ok: true, atualizadas: linhasOC.length });
-  } catch(e) { res.json({ erro: e.message }); }
-});
-
-// ====================================================
-// LISTAR SEM CADASTRO — OCs e Planos das vendas sem vínculo de evento
-// ====================================================
-router.get('/listar_sem_cadastro', async (req, res) => {
-  try {
-    // Sempre lê direto da planilha — nunca usa cache
-    const { flush } = require('./cache');
-    flush();
-
-    const colMap  = await getColMap();
-    const rows    = await getVendasRows();
-    const ocs     = await getOCs();
-    const eventos = await getEventos();
-
-    const ocsExist    = new Set(ocs.map(o => o.oc?.trim()).filter(Boolean));
-    const planosExist = new Set(ocs.map(o => o.plano?.trim()).filter(Boolean));
-
-    const ocsSemCad = {}, planosSemCad = {};
-    rows.forEach(row => {
-      const oc    = String(vRow(row, colMap, 'OC')    || '').trim();
-      const plano = String(vRow(row, colMap, 'PLANO') || '').trim();
-      const ev    = String(vRow(row, colMap, 'EVENTO')|| '').trim();
-
-      if (oc && !ocsExist.has(oc)) {
-        if (!ocsSemCad[oc]) ocsSemCad[oc] = { oc, eventoSugerido: ev, count: 0 };
-        ocsSemCad[oc].count++;
-      }
-      if (plano && !planosExist.has(plano)) {
-        if (!planosSemCad[plano]) planosSemCad[plano] = { plano, eventoSugerido: ev, count: 0 };
-        planosSemCad[plano].count++;
-      }
-    });
-
-    res.json({
-      ok: true,
-      ocs:     Object.values(ocsSemCad).sort((a,b)    => b.count - a.count),
-      planos:  Object.values(planosSemCad).sort((a,b) => b.count - a.count),
-      eventos: eventos.map(e => ({ codigo: e.codigo, nome: e.nome })),
-    });
-  } catch(e) { res.json({ erro: e.message }); }
-});
-
-// ====================================================
-// EDITAR CAMPO DE VENDA — atualiza OC ou Plano na planilha VENDAS
-// ====================================================
-router.post('/editar_venda_campo', async (req, res) => {
-  try {
-    const { linha, campo, valor } = req.body;
-    if (!linha || !campo || valor === undefined) return res.json({ erro: 'Parâmetros inválidos' });
-
-    const colMap = await getColMap();
-    const camposPermitidos = { OC: V_NOMES['OC'], PLANO: V_NOMES['PLANO'] };
-    const nomeCol = camposPermitidos[campo.toUpperCase()];
-    if (!nomeCol) return res.json({ erro: 'Campo não permitido' });
-
-    const idxCol = colMap[nomeCol];
-    if (idxCol === undefined) return res.json({ erro: 'Coluna não encontrada' });
-
-    const sheetsModule = require('./sheets');
-    const { google } = require('googleapis');
-    const auth = new google.auth.JWT(
-      process.env.GOOGLE_CLIENT_EMAIL, null,
-      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
-      ['https://www.googleapis.com/auth/spreadsheets']
-    );
-    const api = google.sheets({ version: 'v4', auth });
-
-    const colLetra = n => n < 26
-      ? String.fromCharCode(65 + n)
-      : String.fromCharCode(64 + Math.floor(n/26)) + String.fromCharCode(65 + (n%26));
-
-    await api.spreadsheets.values.update({
-      spreadsheetId: sheetsModule.SPREADSHEET_ID,
-      range: `${ABA.VENDAS}!${colLetra(idxCol)}${linha}`,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [[valor]] },
-    });
-
-    const { del } = require('./cache');
-    del('vendas_rows');
-    res.json({ ok: true });
-  } catch(e) { res.json({ erro: e.message }); }
-});
-
-// ====================================================
-// SALVAR OCs EM LOTE — adiciona várias OCs a um evento
-// ====================================================
-router.post('/salvar_ocs_lote', async (req, res) => {
-  try {
-    const { eventoCod, ocs } = req.body;
-    if (!eventoCod || !ocs?.length) return res.json({ erro: 'Parâmetros inválidos' });
-
-    const { del } = require('./cache');
-    del('ocs');
-    const ocsExist = await getOCs();
-    const existentes = new Set(ocsExist.map(o => o.oc.trim()));
-    const novas = ocs.filter(oc => oc && !existentes.has(oc.trim()));
-
-    if (novas.length) {
-      const linhas = novas.map(oc => [oc.trim(), '', eventoCod, '', '', '']);
-      await adicionarLinhas(ABA.OCS, linhas);
-      del('ocs');
-    }
-
-    res.json({ ok: true, inseridos: novas.length, ignorados: ocs.length - novas.length });
-  } catch(e) { res.json({ erro: e.message }); }
-});
-
-// ====================================================
-// SALVAR PLANOS EM LOTE — adiciona vários Planos a um evento
-// ====================================================
-router.post('/salvar_planos_lote', async (req, res) => {
-  try {
-    const { eventoCod, planos } = req.body;
-    if (!eventoCod || !planos?.length) return res.json({ erro: 'Parâmetros inválidos' });
-
-    const { del } = require('./cache');
-    del('ocs'); // invalida antes de ler para ter dados frescos
-    const todasOCs = await getOCs();
-    const existentes = new Set(todasOCs.map(o => o.plano?.trim()).filter(Boolean));
-    const novos = planos.filter(p => p && !existentes.has(p.trim()));
-
-    if (novos.length) {
-      const linhas = novos.map(p => ['', p.trim(), eventoCod, '', inferirCategoria(p), '']);
-      await adicionarLinhas(ABA.OCS, linhas);
-      del('ocs'); // invalida após salvar
-    }
-
-    res.json({ ok: true, inseridos: novos.length, ignorados: planos.length - novos.length });
-  } catch(e) { res.json({ erro: e.message }); }
-});
-
-// ====================================================
-// GET OCS EVENTO — retorna OCs e Planos de um evento
-// ====================================================
-router.post('/get_ocs_evento', async (req, res) => {
-  try {
-    const { eventoCod } = req.body;
-    if (!eventoCod) return res.json({ ocs: [], planos: [] });
-    const todas = await getOCs();
-    const ocs    = todas.filter(o => o.eventoCod === eventoCod && o.oc).map(o => ({
-      oc: o.oc, canal: o.canal, categoria: o.categoria, canalMacro: o.canalMacro
-    }));
-    const planos = todas.filter(o => o.eventoCod === eventoCod && o.plano && !o.oc).map(o => ({
-      plano: o.plano, categoria: o.categoria
-    }));
-    res.json({ ok: true, ocs, planos });
-  } catch(e) { res.json({ erro: e.message }); }
-});
-
-// ====================================================
-// SALVAR OC EVENTO — adiciona/atualiza uma OC num evento
-// ====================================================
-router.post('/salvar_oc_evento', async (req, res) => {
-  try {
-    const { oc, canal, eventoCod, canalMacro } = req.body;
-    if (!oc || !eventoCod) return res.json({ erro: 'Parâmetros inválidos' });
-    const { del } = require('./cache');
-    const sheetsModule = require('./sheets');
-    const { google } = require('googleapis');
-    const auth = new google.auth.JWT(
-      process.env.GOOGLE_CLIENT_EMAIL, null,
-      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
-      ['https://www.googleapis.com/auth/spreadsheets']
-    );
-    const api = google.sheets({ version: 'v4', auth });
-    const rows = await lerAba(ABA.OCS);
-    // Procura linha existente
-    let linhaExist = -1;
-    rows.forEach((r, i) => {
-      if (i === 0) return;
-      if (String(r[0]||'').trim() === oc.trim() && String(r[2]||'').trim() === eventoCod) linhaExist = i + 1;
-    });
-    if (linhaExist > 0) {
-      // Atualiza canal
-      await api.spreadsheets.values.update({
-        spreadsheetId: sheetsModule.SPREADSHEET_ID,
-        range: `${ABA.OCS}!D${linhaExist}:F${linhaExist}`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [[canal||'', '', canalMacro||'']] },
-      });
-    } else {
-      await adicionarLinhas(ABA.OCS, [[oc, '', eventoCod, canal||'', '', canalMacro||'']]);
-    }
-    del('ocs');
-    res.json({ ok: true });
-  } catch(e) { res.json({ erro: e.message }); }
-});
-
-// ====================================================
-// SALVAR PLANO EVENTO — adiciona um Plano num evento
-// ====================================================
-router.post('/salvar_plano_evento', async (req, res) => {
-  try {
-    const { plano, eventoCod } = req.body;
-    if (!plano || !eventoCod) return res.json({ erro: 'Parâmetros inválidos' });
-    const { del } = require('./cache');
-    const todas = await getOCs();
-    const existe = todas.find(o => o.plano?.trim() === plano.trim() && o.eventoCod === eventoCod);
-    if (!existe) {
-      await adicionarLinhas(ABA.OCS, [['', plano, eventoCod, '', inferirCategoria(plano), '']]);
-      del('ocs');
-    }
-    res.json({ ok: true });
-  } catch(e) { res.json({ erro: e.message }); }
-});
-
-// ====================================================
-// DELETAR OC EVENTO — remove uma OC de um evento
-// ====================================================
-router.post('/deletar_oc_evento', async (req, res) => {
-  try {
-    const { oc, eventoCod } = req.body;
-    if (!oc || !eventoCod) return res.json({ erro: 'Parâmetros inválidos' });
-    const { del } = require('./cache');
-    const sheetsModule = require('./sheets');
-    const { google } = require('googleapis');
-    const auth = new google.auth.JWT(
-      process.env.GOOGLE_CLIENT_EMAIL, null,
-      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
-      ['https://www.googleapis.com/auth/spreadsheets']
-    );
-    const api = google.sheets({ version: 'v4', auth });
-    const rows = await lerAba(ABA.OCS);
-    const meta = await api.spreadsheets.get({ spreadsheetId: sheetsModule.SPREADSHEET_ID });
-    const sheet = meta.data.sheets.find(s => s.properties.title === ABA.OCS);
-    if (!sheet) return res.json({ erro: 'Aba não encontrada' });
-    const sheetId = sheet.properties.sheetId;
-    const linhas = [];
-    rows.forEach((r, i) => {
-      if (i === 0) return;
-      if (String(r[0]||'').trim() === oc.trim() && String(r[2]||'').trim() === eventoCod) linhas.push(i);
-    });
-    if (!linhas.length) return res.json({ ok: true });
-    linhas.sort((a,b) => b - a);
-    const requests = linhas.map(idx => ({
-      deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 } }
-    }));
-    await api.spreadsheets.batchUpdate({ spreadsheetId: sheetsModule.SPREADSHEET_ID, requestBody: { requests } });
-    del('ocs');
-    res.json({ ok: true });
-  } catch(e) { res.json({ erro: e.message }); }
-});
-
-// ====================================================
-// DELETAR PLANO EVENTO — remove um Plano de um evento
-// ====================================================
-router.post('/deletar_plano_evento', async (req, res) => {
-  try {
-    const { plano, eventoCod } = req.body;
-    if (!plano || !eventoCod) return res.json({ erro: 'Parâmetros inválidos' });
-    const { del } = require('./cache');
-    const sheetsModule = require('./sheets');
-    const { google } = require('googleapis');
-    const auth = new google.auth.JWT(
-      process.env.GOOGLE_CLIENT_EMAIL, null,
-      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, ''),
-      ['https://www.googleapis.com/auth/spreadsheets']
-    );
-    const api = google.sheets({ version: 'v4', auth });
-    const rows = await lerAba(ABA.OCS);
-    const meta = await api.spreadsheets.get({ spreadsheetId: sheetsModule.SPREADSHEET_ID });
-    const sheet = meta.data.sheets.find(s => s.properties.title === ABA.OCS);
-    if (!sheet) return res.json({ erro: 'Aba não encontrada' });
-    const sheetId = sheet.properties.sheetId;
-    const linhas = [];
-    rows.forEach((r, i) => {
-      if (i === 0) return;
-      if (String(r[1]||'').trim() === plano.trim() && String(r[2]||'').trim() === eventoCod) linhas.push(i);
-    });
-    if (!linhas.length) return res.json({ ok: true });
-    linhas.sort((a,b) => b - a);
-    const requests = linhas.map(idx => ({
-      deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 } }
-    }));
-    await api.spreadsheets.batchUpdate({ spreadsheetId: sheetsModule.SPREADSHEET_ID, requestBody: { requests } });
-    del('ocs');
-    res.json({ ok: true });
-  } catch(e) { res.json({ erro: e.message }); }
-});
-
-const rotasOk = ['/salvar_oc','/deletar_oc','/vincular_atualizar','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
+const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/salvar_ocs_lote','/salvar_planos_lote','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
 rotasOk.forEach(rota => { router.post(rota, (req, res) => res.json({ ok:true })); router.get(rota, (req, res) => res.json({ ok:true })); });
 
 module.exports = router;
