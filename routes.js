@@ -2142,9 +2142,9 @@ router.post('/corrigir_oc_cadastro', async (req, res) => {
 // ====================================================
 router.get('/listar_sem_cadastro', async (req, res) => {
   try {
-    // Invalida cache de OCs para sempre refletir o estado atual da planilha
-    const { del } = require('./cache');
-    del('ocs');
+    // Sempre lê direto da planilha — nunca usa cache
+    const { flush } = require('./cache');
+    flush();
 
     const colMap  = await getColMap();
     const rows    = await getVendasRows();
@@ -2152,10 +2152,7 @@ router.get('/listar_sem_cadastro', async (req, res) => {
     const eventos = await getEventos();
 
     const ocsExist    = new Set(ocs.map(o => o.oc?.trim()).filter(Boolean));
-    // Inclui todos os planos cadastrados (com ou sem OC associada)
     const planosExist = new Set(ocs.map(o => o.plano?.trim()).filter(Boolean));
-    // Também considera OC como plano se não houver plano separado
-    ocs.forEach(o => { if (o.oc) ocsExist.add(o.oc.trim()); });
 
     const ocsSemCad = {}, planosSemCad = {};
     rows.forEach(row => {
