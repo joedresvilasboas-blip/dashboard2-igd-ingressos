@@ -4,6 +4,7 @@ const Time = {
   _config: null,
   _dados: null,
   _filtroEquipe: 'todas',
+  _filtros: { mes: '', semana: '', evento: '', canal: '', status: '' },
 
   async load() {
     if (!this._config) {
@@ -19,20 +20,35 @@ const Time = {
 
     const cfg   = this._config || {};
     const sems  = cfg.semanas  || [];
-    const hojeS = cfg.hojeStr  || '';
-    const semAtual = sems.find(s => hojeS >= s.strIni && hojeS <= s.strFim) || sems[sems.length-1] || {};
+    const meses = cfg.meses    || [];
+    const eventos = cfg.eventosFiltro || (cfg.eventos||[]).map(e=>e.nome);
+
+    const opMes    = meses.map(m => `<option value="${m.nome}">${m.nome}</option>`).join('');
+    const opSem    = sems.map(s => `<option value="${s.num}">Sem ${s.num} · ${s.label}</option>`).join('');
+    const opEvento = eventos.map(e => `<option value="${e}">${e}</option>`).join('');
 
     tela.innerHTML = `
       <!-- TOPBAR INTERNA -->
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px var(--s5);
-        background:var(--bg-2);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;gap:8px">
-        <div style="display:flex;gap:6px" id="time-tabs">
-          <button class="tab active" onclick="Time._mudarAba('visao',this)">Visão Geral</button>
-          <button class="tab" onclick="Time._mudarAba('hoje',this)">Hoje</button>
-          <button class="tab" onclick="Time._mudarAba('evolucao',this)">Evolução</button>
+      <div style="background:var(--bg-2);border-bottom:1px solid var(--border);flex-shrink:0">
+        <!-- Abas e equipe -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px var(--s5);flex-wrap:wrap;gap:8px">
+          <div style="display:flex;gap:6px" id="time-tabs">
+            <button class="tab active" onclick="Time._mudarAba('visao',this)">Visão Geral</button>
+            <button class="tab" onclick="Time._mudarAba('hoje',this)">Hoje</button>
+            <button class="tab" onclick="Time._mudarAba('evolucao',this)">Evolução</button>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center" id="time-equipe-filtros">
+            <span style="font-size:11px;color:var(--text-3)">Equipe:</span>
+          </div>
         </div>
-        <div style="display:flex;gap:6px;align-items:center" id="time-equipe-filtros">
-          <span style="font-size:11px;color:var(--text-3)">Equipe:</span>
+        <!-- Filtros -->
+        <div style="display:flex;gap:8px;padding:0 var(--s5) 10px;flex-wrap:wrap;align-items:flex-end">
+          ${this._selectFiltro('Mês',    'time-f-mes',    '<option value="">Todos</option>' + opMes,    'mes')}
+          ${this._selectFiltro('Semana', 'time-f-sem',    '<option value="">Todas</option>' + opSem,    'semana')}
+          ${this._selectFiltro('Evento', 'time-f-evento', '<option value="">Todos</option>' + opEvento, 'evento')}
+          ${this._selectFiltro('Canal',  'time-f-canal',  '<option value="">Todos</option><option value="VA SALES">VA Sales</option><option value="RC SALES">RC Sales</option>', 'canal')}
+          ${this._selectFiltro('Status', 'time-f-status', '<option value="">Todos</option><option value="PAGO">Pago</option><option value="CANCELADO">Cancelado</option>', 'status')}
+          <button class="btn btn-sm btn-secondary" onclick="Time._limparFiltros()">Limpar</button>
         </div>
       </div>
 
@@ -44,17 +60,71 @@ const Time = {
       </div>`;
   },
 
+  _selectFiltro(label, id, opts, chave) {
+    return `<div style="display:flex;flex-direction:column;gap:3px">
+      <span style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em">${label}</span>
+      <select id="${id}" class="input select" style="padding:5px 10px;font-size:12px;min-width:110px"
+        onchange="Time._aplicarFiltro('${chave}',this.value)">${opts}</select>
+    </div>`;
+  },
+
+  _aplicarFiltro(chave, valor) {
+    if (chave === 'semana') {
+      // Ao selecionar semana, pega strIni/strFim correspondente
+      this._filtros.semana = valor;
+      const sems = this._config?.semanas || [];
+      const sem  = sems.find(s => String(s.num) === String(valor));
+      this._filtros._strIni = sem?.strIni || '';
+      this._filtros._strFim = sem?.strFim || '';
+    } else if (chave === 'mes') {
+      this._filtros.mes = valor;
+      // Ao selecionar mês, pega strIni/strFim do mês
+      const meses = this._config?.meses || [];
+      const m = meses.find(x => x.nome === valor);
+      if (m) { this._filtros._strIni = m.strIni || ''; this._filtros._strFim = m.strFim || ''; }
+      else { this._filtros._strIni = ''; this._filtros._strFim = ''; }
+    } else {
+      this._filtros[chave] = valor;
+    }
+    // Limpa o outro (mês vs semana)
+    if (chave === 'semana' && valor) { this._filtros.mes = ''; document.getElementById('time-f-mes').value = ''; }
+    if (chave === 'mes'    && valor) { this._filtros.semana = ''; document.getElementById('time-f-sem').value = ''; }
+
+    this._dados = null;
+    this._carregarDados();
+  },
+
+  _limparFiltros() {
+    this._filtros = { mes: '', semana: '', evento: '', canal: '', status: '', _strIni: '', _strFim: '' };
+    ['time-f-mes','time-f-sem','time-f-evento','time-f-canal','time-f-status'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    this._dados = null;
+    this._carregarDados();
+  },
+
   async _carregarDados() {
     const cfg   = this._config || {};
     const sems  = cfg.semanas  || [];
     const hojeS = cfg.hojeStr  || '';
     const semAtual = sems.find(s => hojeS >= s.strIni && hojeS <= s.strFim) || sems[sems.length-1] || {};
 
+    // Usa filtros se definidos, senão usa semana atual
+    const strIni = this._filtros._strIni || semAtual.strIni || '';
+    const strFim = this._filtros._strFim || semAtual.strFim || '';
+    const canal  = this._filtros.canal  || '';
+    const evento = this._filtros.evento || '';
+    const status = this._filtros.status || '';
+
+    const el = document.getElementById('time-main');
+    if (el) el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:200px"><div class="spinner"></div></div>';
+
     try {
       const [semaforoRes, metaRes, rankingRes] = await Promise.all([
         API.getSemaforo({}),
-        API.getMetaSemanal(semAtual.strIni||'', semAtual.strFim||'', '', ''),
-        API.getRanking(semAtual.strIni||'', semAtual.strFim||'', ''),
+        API.getMetaSemanal(strIni, strFim, canal || '', ''),
+        API.post('ranking_time', { strIni, strFim, canal, evento, status }),
       ]);
 
       const semaforo = semaforoRes.semaforo || [];
@@ -75,9 +145,9 @@ const Time = {
         const vend = semaforo.find(s => s.codigo === v.codigo);
         const eq   = vend?.equipe || 'Sem equipe';
         if (equipesMap[eq]) {
-          equipesMap[eq].hc    += (v.headcounts || 0);
-          equipesMap[eq].vendas += (v.vendas     || 0);
-          equipesMap[eq].fat   += (v.faturamento || 0);
+          equipesMap[eq].hc     += (v.headcounts  || 0);
+          equipesMap[eq].vendas += (v.vendas       || 0);
+          equipesMap[eq].fat    += (v.faturamento  || 0);
         }
       });
 
@@ -87,6 +157,7 @@ const Time = {
         ranking,
         meta: metaRes,
         semAtual,
+        strIni, strFim,
       };
 
       // Renderiza filtros de equipe
