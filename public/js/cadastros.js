@@ -912,6 +912,7 @@ const CadOCs = {
         <div class="flex items-center justify-between" style="margin-bottom:var(--s3);flex-shrink:0">
           <div class="modal-title">OCs &amp; Planos</div>
           <div style="display:flex;gap:var(--s2)">
+            <button class="btn btn-sm btn-secondary" onclick="CadOCs.abrirVincular()" title="Vincular OCs e Planos sem cadastro a eventos">🔗 Vincular</button>
             <button class="btn btn-sm btn-secondary" onclick="CadOCs.abrirRevisao()" title="Revisar e mover OCs entre eventos">🔍 Revisar OCs</button>
             <button class="btn btn-sm btn-secondary" onclick="document.getElementById('modal-ocs').remove()">✕</button>
           </div>
@@ -966,6 +967,185 @@ const CadOCs = {
       </div>`;
     m.addEventListener('click', e => { if (e.target === m) m.remove(); });
     document.body.appendChild(m);
+  },
+
+  async abrirVincular() {
+    const m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'modal-vincular-ocs';
+    m.innerHTML = `
+      <div class="modal" style="max-height:95vh;display:flex;flex-direction:column;max-width:800px;width:100%">
+        <div class="modal-handle"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3);flex-shrink:0">
+          <div class="modal-title">🔗 Vincular OCs & Planos a Eventos</div>
+          <button class="btn btn-sm btn-secondary" onclick="document.getElementById('modal-vincular-ocs').remove()">✕</button>
+        </div>
+
+        <!-- Abas OCs / Planos -->
+        <div style="display:flex;gap:var(--s2);margin-bottom:var(--s3);flex-shrink:0;border-bottom:1px solid var(--border);padding-bottom:var(--s2)">
+          <button id="tab-ocs-btn" class="tab active" onclick="CadOCs._mudarAbaVincular('ocs')">OCs sem cadastro</button>
+          <button id="tab-planos-btn" class="tab" onclick="CadOCs._mudarAbaVincular('planos')">Planos sem cadastro</button>
+        </div>
+
+        <!-- Barra de ações -->
+        <div id="vincular-acoes" style="display:none;align-items:center;gap:var(--s2);margin-bottom:var(--s3);
+          padding:var(--s3);background:var(--accent-dim);border-radius:var(--r2);flex-shrink:0">
+          <span id="vincular-sel-count" style="font-size:12px;color:var(--accent);font-weight:600"></span>
+          <span style="font-size:12px;color:var(--text-3)">selecionadas — Vincular ao evento:</span>
+          <select id="vincular-destino" class="input select" style="flex:1;min-width:160px">
+            <option value="">Selecione o evento...</option>
+          </select>
+          <button class="btn btn-sm btn-primary" onclick="CadOCs._vincularSelecionados(this)">Vincular</button>
+          <button class="btn btn-sm btn-secondary" onclick="CadOCs._limparSelecaoVincular()">✕</button>
+        </div>
+
+        <div id="vincular-busca-wrap" style="margin-bottom:var(--s3);flex-shrink:0">
+          <input id="vincular-busca" type="text" class="input" placeholder="Buscar..." oninput="CadOCs._renderVincular()">
+        </div>
+
+        <div id="vincular-lista" style="overflow-y:auto;flex:1">
+          <div class="spinner" style="margin:40px auto"></div>
+        </div>
+      </div>`;
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    document.body.appendChild(m);
+    this._abaVincular = 'ocs';
+    this._selVincular = new Set();
+    this._dadosVincular = null;
+    await this._carregarVincular();
+  },
+
+  _mudarAbaVincular(aba) {
+    this._abaVincular = aba;
+    this._selVincular = new Set();
+    document.getElementById('tab-ocs-btn')?.classList.toggle('active', aba === 'ocs');
+    document.getElementById('tab-planos-btn')?.classList.toggle('active', aba === 'planos');
+    this._atualizarAcoesVincular();
+    this._renderVincular();
+  },
+
+  async _carregarVincular() {
+    try {
+      const d = await API.get('listar_sem_cadastro');
+      this._dadosVincular = d;
+
+      const opts = (d.eventos || []).map(e => `<option value="${e.codigo}">${e.nome}</option>`).join('');
+      const sel  = document.getElementById('vincular-destino');
+      if (sel) sel.innerHTML = '<option value="">Selecione o evento...</option>' + opts;
+
+      this._renderVincular();
+    } catch(e) {
+      const el = document.getElementById('vincular-lista');
+      if (el) el.innerHTML = `<div class="empty"><div class="empty-title">Erro: ${e.message}</div></div>`;
+    }
+  },
+
+  _renderVincular() {
+    const el = document.getElementById('vincular-lista');
+    if (!el || !this._dadosVincular) return;
+    const busca = (document.getElementById('vincular-busca')?.value || '').toLowerCase();
+    const aba   = this._abaVincular;
+    const itens = (aba === 'ocs' ? this._dadosVincular.ocs : this._dadosVincular.planos) || [];
+    const campo = aba === 'ocs' ? 'oc' : 'plano';
+
+    const filtrados = busca ? itens.filter(i => i[campo].toLowerCase().includes(busca)) : itens;
+
+    if (!filtrados.length) {
+      el.innerHTML = `<div class="empty"><div class="empty-icon">✓</div>
+        <div class="empty-title">Nenhum ${aba === 'ocs' ? 'OC' : 'Plano'} sem cadastro!</div></div>`;
+      return;
+    }
+
+    // Botão selecionar todos
+    const todosSelected = filtrados.every(i => this._selVincular.has(i[campo]));
+    el.innerHTML = `
+      <div style="padding:6px 10px;background:var(--bg-3);border-radius:var(--r2);
+        margin-bottom:var(--s2);display:flex;align-items:center;gap:8px">
+        <input type="checkbox" ${todosSelected?'checked':''} style="accent-color:var(--accent);width:14px;height:14px"
+          onchange="CadOCs._toggleTodosVincular(this.checked)">
+        <span style="font-size:11px;color:var(--text-3)">Selecionar todos (${filtrados.length})</span>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">
+        <div style="display:grid;grid-template-columns:28px 1fr 120px 60px;gap:6px;
+          padding:6px 10px;background:var(--bg-3);border-bottom:1px solid var(--border)">
+          <div></div>
+          <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">${aba === 'ocs' ? 'OC' : 'Plano'}</div>
+          <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">Evento sugerido</div>
+          <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">Vendas</div>
+        </div>
+        ${filtrados.map(i => {
+          const val = i[campo];
+          const sel = this._selVincular.has(val);
+          return `<div style="display:grid;grid-template-columns:28px 1fr 120px 60px;gap:6px;
+            align-items:center;padding:7px 10px;border-bottom:1px solid var(--border);
+            background:${sel?'var(--accent-dim)':''}">
+            <input type="checkbox" ${sel?'checked':''} style="accent-color:var(--accent);width:14px;height:14px"
+              onchange="CadOCs._toggleSelVincular('${val.replace(/'/g,"\'")}',this.checked)">
+            <div style="font-size:11px;color:var(--text);word-break:break-all">${val}</div>
+            <div style="font-size:10px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${i.eventoSugerido}">${i.eventoSugerido||'—'}</div>
+            <div style="font-size:11px;color:var(--accent);font-weight:600;text-align:center">${i.count}</div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  },
+
+  _toggleSelVincular(val, checked) {
+    if (checked) this._selVincular.add(val);
+    else this._selVincular.delete(val);
+    this._atualizarAcoesVincular();
+  },
+
+  _toggleTodosVincular(checked) {
+    const aba   = this._abaVincular;
+    const itens = (aba === 'ocs' ? this._dadosVincular?.ocs : this._dadosVincular?.planos) || [];
+    const campo = aba === 'ocs' ? 'oc' : 'plano';
+    const busca = (document.getElementById('vincular-busca')?.value || '').toLowerCase();
+    const filtrados = busca ? itens.filter(i => i[campo].toLowerCase().includes(busca)) : itens;
+    filtrados.forEach(i => {
+      if (checked) this._selVincular.add(i[campo]);
+      else this._selVincular.delete(i[campo]);
+    });
+    this._atualizarAcoesVincular();
+    this._renderVincular();
+  },
+
+  _limparSelecaoVincular() {
+    this._selVincular = new Set();
+    this._atualizarAcoesVincular();
+    this._renderVincular();
+  },
+
+  _atualizarAcoesVincular() {
+    const el = document.getElementById('vincular-acoes');
+    const ct = document.getElementById('vincular-sel-count');
+    if (!el) return;
+    const n = this._selVincular.size;
+    el.style.display = n > 0 ? 'flex' : 'none';
+    if (ct) ct.textContent = `${n} ${this._abaVincular === 'ocs' ? 'OC' : 'Plano'}${n !== 1 ? 's' : ''}`;
+  },
+
+  async _vincularSelecionados(btn) {
+    const destino = document.getElementById('vincular-destino')?.value;
+    if (!destino) { Utils.toast('Selecione o evento de destino', 'error'); return; }
+    if (!this._selVincular.size) return;
+
+    const aba    = this._abaVincular;
+    const rota   = aba === 'ocs' ? 'salvar_ocs_lote' : 'salvar_planos_lote';
+    const campo  = aba === 'ocs' ? 'ocs' : 'planos';
+    const nomeEv = document.getElementById('vincular-destino')?.selectedOptions[0]?.text || destino;
+
+    Utils.btnLoading(btn, true);
+    try {
+      const body = { eventoCod: destino, [campo]: [...this._selVincular] };
+      const res  = await API.post(rota, body);
+      if (res.erro) throw new Error(res.erro);
+      Utils.toast(`✓ ${res.inseridos} vinculado${res.inseridos !== 1?'s':''} ao evento ${nomeEv}!`, 'success');
+      this._selVincular = new Set();
+      await this._carregarVincular();
+    } catch(e) {
+      Utils.toast('Erro: ' + e.message, 'error');
+    }
+    Utils.btnLoading(btn, false);
   },
 
   async abrirRevisao() {
