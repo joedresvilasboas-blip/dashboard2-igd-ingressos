@@ -1440,6 +1440,40 @@ router.post('/reprocessar_tudo', async (req, res) => {
       console.log(`[REPROCESSAR] Exemplo venda[0]: dtPag="${dtEx}" → strD="${strEx}"`);
     }
 
+    // Extrai YYYY-MM-DD sem usar Date
+    const _exStrD = (val) => {
+      if (!val) return '';
+      const s = String(val).trim();
+      const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+      return '';
+    };
+
+    // Pré-calcula semana/mês para todas as linhas (sem async)
+    const semanaMes = rows.map(row => {
+      const strDRef = _exStrD(row[idx.dtPag]) || _exStrD(row[idx.dtReg] !== undefined ? row[idx.dtReg] : '');
+      let semana = '', mes = '';
+      if (strDRef) {
+        for (const s of sems) {
+          if (strDRef >= s.strIni && strDRef <= s.strFim) { semana = s.num; mes = s.mes; break; }
+        }
+      }
+      return { semana, mes };
+    });
+
+    // Pré-calcula canais para todas as linhas (com async, mas separado)
+    const canaisCalculados = await Promise.all(rows.map(async (row) => {
+      const oc    = String(row[idx.oc]    || '').trim();
+      const plano = String(row[idx.plano] || '').trim();
+      const ocInfo   = mapaOC[oc+'|'+plano] || mapaOC[oc] || {};
+      const inferido = await inferirCanal(oc, plano);
+      return {
+        canal:      ocInfo.canal      || inferido.canal      || String(row[idx.canal]      || '').trim(),
+        canalMacro: ocInfo.canalMacro || inferido.canalMacro || String(row[idx.canalMacro] || '').trim(),
+      };
+    }));
+
     // Acumula valores por campo (uma lista por campo = uma coluna inteira)
     const campos = { canal:[], canalMacro:[], categoria:[], pontos:[], hc:[], semana:[], mes:[], evento:[], nomeVend:[], equipe:[] };
 
@@ -1450,31 +1484,8 @@ router.post('/reprocessar_tudo', async (req, res) => {
       const status  = String(row[idx.status]  || '').trim().toUpperCase();
       const valor   = parseFloat(String(row[idx.valor] || '0').replace('R$','').replace(/\s/g,'').replace(',','.')) || 0;
 
-      // Extrai YYYY-MM-DD sem usar Date (evita problema de fuso UTC no Render)
-      const _exStrD = (val) => {
-        if (!val) return '';
-        const s = String(val).trim();
-        const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-        if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
-        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-        return '';
-      };
-      const strDPag = _exStrD(row[idx.dtPag]);
-      const strDReg = idx.dtReg !== undefined ? _exStrD(row[idx.dtReg]) : '';
-      const strDRef = strDPag || strDReg;
-
-      // Semana e mês
-      let semana = '', mes = '';
-      if (strDRef) {
-        sems.forEach(s => { if (strDRef >= s.strIni && strDRef <= s.strFim) { semana = s.num; mes = s.mes; } });
-        if (!semana) console.warn(`[REPROCESSAR] Sem semana para: ${strDRef} (pag: ${row[idx.dtPag]}, reg: ${row[idx.dtReg]})`);
-      }
-
-      // Canal
-      const ocInfo     = mapaOC[oc+'|'+plano] || mapaOC[oc] || {};
-      const inferido   = await inferirCanal(oc, plano);
-      const canal      = ocInfo.canal      || inferido.canal      || String(row[idx.canal]      || '').trim();
-      const canalMacro = ocInfo.canalMacro || inferido.canalMacro || String(row[idx.canalMacro] || '').trim();
+      const { semana, mes } = semanaMes[i];
+      const { canal, canalMacro } = canaisCalculados[i];
 
       // Categoria e pontos — cancelado mantém pontuação normal
       const categoria = inferirCategoria(plano);
