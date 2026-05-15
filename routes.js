@@ -933,17 +933,17 @@ router.post('/upload_csv', async (req, res) => {
     ocs.forEach(o => { mapaOC[o.oc+'|'+o.plano] = o; mapaOC[o.oc] = o; });
     eventos.forEach(e => { mapaEvento[e.codigo] = e; mapaEvento[e.nome] = e; });
 
-    // Índice de IDs existentes
-    const idCol = colMap[V_NOMES['ID']];
+    // Lê colMap fresco para garantir colunas corretas após reorganização
+    resetColMap();
+    const uploadColMap = await getColMap();
+
+    // Índice de IDs existentes usando colMap atualizado
+    const idCol = uploadColMap[V_NOMES['ID']];
     const idsExistentes = {};
     vendasRows.forEach((r, i) => {
       const id = String(r[idCol]||'').trim();
       if (id) idsExistentes[id] = i + 2;
     });
-
-    // Lê o colMap atual da planilha para gravar nas colunas certas
-    resetColMap();
-    const uploadColMap = await getColMap();
 
     let importados = 0, atualizados = 0, erros = 0;
     const novasLinhas = [], linhasAtualizar = [];
@@ -1991,6 +1991,326 @@ router.post('/relatorio_dinamico', async (req, res) => {
 });
 
 const rotasOk = ['/salvar_oc','/deletar_oc','/get_ocs_evento','/salvar_oc_evento','/salvar_plano_evento','/salvar_ocs_lote','/salvar_planos_lote','/vincular_atualizar','/deletar_oc_evento','/deletar_plano_evento','/aplicar_regra_canal','/salvar_calendario','/salvar_canal','/jornada_upgrade','/rd_get_vendedores','/rd_salvar_metricas','/rd_salvar_venda','/rd_taxas_periodo','/rd_salvar_vendedor','/rd_deletar_vendedor'];
+// ====================================================
+// VERIFICAR INCONSISTÊNCIAS
+// ====================================================
+router.post('/verificar_inconsistencias', async (req, res) => {
+  try {
+    const colMap  = await getColMap();
+    const rows    = await getVendasRows();
+    const ocs     = await getOCs();
+    const eventos = await getEventos();
+    const mapaOC = {}, mapaPlano = {}, mapaEvento = {};
+    ocs.forEach(o => { if (o.oc) mapaOC[o.oc.trim()] = o.eventoCod||''; if (o.plano) mapaPlano[o.plano.trim()] = o.eventoCod||''; });
+    eventos.forEach(e => { mapaEvento[e.codigo] = e.nome; });
+    const inconsistencias = [];
+    rows.forEach((row, i) => {
+      const id    = String(vRow(row,colMap,'ID')    ||'').trim();
+      const oc    = String(vRow(row,colMap,'OC')    ||'').trim();
+      const plano = String(vRow(row,colMap,'PLANO') ||'').trim();
+      if (!oc || !plano) return;
+      const evCodOC    = mapaOC[oc]     || '';
+      const evCodPlano = mapaPlano[plano] || '';
+      if (!evCodOC || !evCodPlano) return;
+      if (evCodOC !== evCodPlano) {
+        inconsistencias.push({
+          linha: i+2, id, oc, plano,
+          eventoOC:    mapaEvento[evCodOC]    || evCodOC,
+          eventoPlano: mapaEvento[evCodPlano] || evCodPlano,
+          eventoAtual: String(vRow(row,colMap,'EVENTO')||'').trim(),
+          link: id ? 'https://central.ignicaodigital.com.br/payment/'+id+'/details' : '',
+          codVend:  String(vRow(row,colMap,'COD_VEND') ||'').trim(),
+          nomeVend: String(vRow(row,colMap,'NOME_VEND')||'').trim(),
+          dtPag:    String(vRow(row,colMap,'DT_PAG')   ||'').trim(),
+        });
+      }
+    });
+    res.json({ ok: true, total: inconsistencias.length, inconsistencias });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// EDITAR CAMPO DE VENDA
+// ====================================================
+router.post('/editar_venda_campo', async (req, res) => {
+  try {
+    const { linha, campo, valor } = req.body;
+    if (!linha || !campo || valor === undefined) return res.json({ erro: 'Parâmetros inválidos' });
+    const colMap = await getColMap();
+    const camposPermitidos = { OC: V_NOMES['OC'], PLANO: V_NOMES['PLANO'] };
+    const nomeCol = camposPermitidos[campo.toUpperCase()];
+    if (!nomeCol) return res.json({ erro: 'Campo não permitido' });
+    const idxCol = colMap[nomeCol];
+    if (idxCol === undefined) return res.json({ erro: 'Coluna não encontrada' });
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY||'').replace(/\\n/g,'\n').replace(/^"|"$/g,''),
+      ['https://www.googleapis.com/auth/spreadsheets']);
+    const api = google.sheets({ version: 'v4', auth });
+    const colLetra = n => n < 26 ? String.fromCharCode(65+n) : String.fromCharCode(64+Math.floor(n/26))+String.fromCharCode(65+(n%26));
+    await api.spreadsheets.values.update({
+      spreadsheetId: sheetsModule.SPREADSHEET_ID,
+      range: ABA.VENDAS+'!'+colLetra(idxCol)+linha,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[valor]] },
+    });
+    const { del } = require('./cache'); del('vendas_rows');
+    res.json({ ok: true });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// CORRIGIR OC NO CADASTRO
+// ====================================================
+router.post('/corrigir_oc_cadastro', async (req, res) => {
+  try {
+    const { oc, novoEventoCod } = req.body;
+    if (!oc || !novoEventoCod) return res.json({ erro: 'Parâmetros inválidos' });
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY||'').replace(/\\n/g,'\n').replace(/^"|"$/g,''),
+      ['https://www.googleapis.com/auth/spreadsheets']);
+    const api = google.sheets({ version: 'v4', auth });
+    const rows = await lerAba(ABA.OCS);
+    const linhas = [];
+    rows.forEach((r,i) => { if (i===0) return; if (String(r[0]||'').trim()===oc.trim()) linhas.push(i+1); });
+    if (!linhas.length) return res.json({ erro: 'OC não encontrada' });
+    const data = linhas.map(l => ({ range: ABA.OCS+'!C'+l, values: [[novoEventoCod]] }));
+    await api.spreadsheets.values.batchUpdate({ spreadsheetId: sheetsModule.SPREADSHEET_ID, requestBody: { valueInputOption: 'USER_ENTERED', data } });
+    const { del } = require('./cache'); del('ocs');
+    res.json({ ok: true, atualizadas: linhas.length });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// LISTAR SEM CADASTRO
+// ====================================================
+router.get('/listar_sem_cadastro', async (req, res) => {
+  try {
+    const { flush } = require('./cache'); flush();
+    const colMap  = await getColMap();
+    const rows    = await getVendasRows();
+    const ocs     = await getOCs();
+    const eventos = await getEventos();
+    const ocsExist    = new Set(ocs.map(o => o.oc?.trim()).filter(Boolean));
+    const planosExist = new Set(ocs.map(o => o.plano?.trim()).filter(Boolean));
+    const ocsSemCad = {}, planosSemCad = {};
+    rows.forEach(row => {
+      const oc    = String(vRow(row,colMap,'OC')    ||'').trim();
+      const plano = String(vRow(row,colMap,'PLANO') ||'').trim();
+      const ev    = String(vRow(row,colMap,'EVENTO')||'').trim();
+      if (oc && !ocsExist.has(oc)) { if (!ocsSemCad[oc]) ocsSemCad[oc]={oc,eventoSugerido:ev,count:0}; ocsSemCad[oc].count++; }
+      if (plano && !planosExist.has(plano)) { if (!planosSemCad[plano]) planosSemCad[plano]={plano,eventoSugerido:ev,count:0}; planosSemCad[plano].count++; }
+    });
+    res.json({ ok:true, ocs:Object.values(ocsSemCad).sort((a,b)=>b.count-a.count), planos:Object.values(planosSemCad).sort((a,b)=>b.count-a.count), eventos:eventos.map(e=>({codigo:e.codigo,nome:e.nome})) });
+  } catch(e) { res.json({ erro: e.message }); }
+});
+
+// ====================================================
+// LISTAR OCS_PLANOS
+// ====================================================
+router.get('/listar_ocs_planos', async (req, res) => {
+  try {
+    const ocs=await getOCs(), eventos=await getEventos();
+    const mapaEvento={};
+    eventos.forEach(e=>{mapaEvento[e.codigo]=e.nome;});
+    const grupos={};
+    ocs.forEach(o=>{const evCod=o.eventoCod||'',evNome=mapaEvento[evCod]||evCod||'(sem evento)';if(!grupos[evCod])grupos[evCod]={eventoCod:evCod,eventoNome:evNome,itens:[]};grupos[evCod].itens.push({oc:o.oc,plano:o.plano,canal:o.canal,categoria:o.categoria,canalMacro:o.canalMacro});});
+    const lista=Object.values(grupos).sort((a,b)=>(a.eventoNome||'').localeCompare(b.eventoNome||''));
+    res.json({ok:true,grupos:lista,eventos:eventos.map(e=>({codigo:e.codigo,nome:e.nome}))});
+  } catch(e){res.json({erro:e.message});}
+});
+
+// ====================================================
+// MOVER OCS EM LOTE
+// ====================================================
+router.post('/mover_ocs_evento', async (req, res) => {
+  try {
+    const { ocs: ocsParaMover, novoEventoCod } = req.body;
+    if (!ocsParaMover?.length || !novoEventoCod) return res.json({ erro: 'Parâmetros inválidos' });
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(process.env.GOOGLE_CLIENT_EMAIL, null,
+      (process.env.GOOGLE_PRIVATE_KEY||'').replace(/\\n/g,'\n').replace(/^"|"$/g,''),
+      ['https://www.googleapis.com/auth/spreadsheets']);
+    const api = google.sheets({ version: 'v4', auth });
+    const rows = await lerAba(ABA.OCS);
+    const ocSet = new Set(ocsParaMover.map(o=>o.trim()));
+    const data = [];
+    rows.forEach((r,i)=>{ if(i===0)return; if(ocSet.has(String(r[0]||'').trim())) data.push({range:ABA.OCS+'!C'+(i+1),values:[[novoEventoCod]]}); });
+    if (!data.length) return res.json({ erro: 'Nenhuma OC encontrada' });
+    const BLOCO=500;
+    for(let i=0;i<data.length;i+=BLOCO) await api.spreadsheets.values.batchUpdate({spreadsheetId:sheetsModule.SPREADSHEET_ID,requestBody:{valueInputOption:'USER_ENTERED',data:data.slice(i,i+BLOCO)}});
+    const { del } = require('./cache'); del('ocs');
+    res.json({ ok:true, atualizadas:data.length });
+  } catch(e){res.json({erro:e.message});}
+});
+
+// ====================================================
+// SALVAR OCS LOTE
+// ====================================================
+router.post('/salvar_ocs_lote', async (req, res) => {
+  try {
+    const { eventoCod, ocs } = req.body;
+    if (!eventoCod || !ocs?.length) return res.json({ erro: 'Parâmetros inválidos' });
+    const { del } = require('./cache'); del('ocs');
+    const todasOCs = await getOCs();
+    const existentes = new Set(todasOCs.map(o=>o.oc.trim()));
+    const novas = ocs.filter(oc=>oc&&!existentes.has(oc.trim()));
+    if (novas.length) { await adicionarLinhas(ABA.OCS, novas.map(oc=>[oc.trim(),'',eventoCod,'','',''])); del('ocs'); }
+    res.json({ ok:true, inseridos:novas.length, ignorados:ocs.length-novas.length });
+  } catch(e){res.json({erro:e.message});}
+});
+
+// ====================================================
+// SALVAR PLANOS LOTE
+// ====================================================
+router.post('/salvar_planos_lote', async (req, res) => {
+  try {
+    const { eventoCod, planos } = req.body;
+    if (!eventoCod || !planos?.length) return res.json({ erro: 'Parâmetros inválidos' });
+    const { del } = require('./cache'); del('ocs');
+    const todasOCs = await getOCs();
+    const existentes = new Set(todasOCs.map(o=>o.plano?.trim()).filter(Boolean));
+    const novos = planos.filter(p=>p&&!existentes.has(p.trim()));
+    if (novos.length) { await adicionarLinhas(ABA.OCS, novos.map(p=>['',p.trim(),eventoCod,'',inferirCategoria(p),''])); del('ocs'); }
+    res.json({ ok:true, inseridos:novos.length, ignorados:planos.length-novos.length });
+  } catch(e){res.json({erro:e.message});}
+});
+
+// ====================================================
+// GET OCS EVENTO
+// ====================================================
+router.post('/get_ocs_evento', async (req, res) => {
+  try {
+    const { eventoCod } = req.body;
+    if (!eventoCod) return res.json({ ocs:[], planos:[] });
+    const todas = await getOCs();
+    const ocs    = todas.filter(o=>o.eventoCod===eventoCod&&o.oc).map(o=>({oc:o.oc,canal:o.canal,categoria:o.categoria,canalMacro:o.canalMacro}));
+    const planos = todas.filter(o=>o.eventoCod===eventoCod&&o.plano&&!o.oc).map(o=>({plano:o.plano,categoria:o.categoria}));
+    res.json({ ok:true, ocs, planos });
+  } catch(e){res.json({erro:e.message});}
+});
+
+// ====================================================
+// SALVAR OC EVENTO
+// ====================================================
+router.post('/salvar_oc_evento', async (req, res) => {
+  try {
+    const { oc, canal, eventoCod, canalMacro } = req.body;
+    if (!oc||!eventoCod) return res.json({erro:'Parâmetros inválidos'});
+    const { del } = require('./cache');
+    const sheetsModule = require('./sheets');
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(process.env.GOOGLE_CLIENT_EMAIL,null,(process.env.GOOGLE_PRIVATE_KEY||'').replace(/\\n/g,'\n').replace(/^"|"$/g,''),['https://www.googleapis.com/auth/spreadsheets']);
+    const api = google.sheets({version:'v4',auth});
+    const rows = await lerAba(ABA.OCS);
+    let linhaExist=-1;
+    rows.forEach((r,i)=>{if(i===0)return;if(String(r[0]||'').trim()===oc.trim()&&String(r[2]||'').trim()===eventoCod)linhaExist=i+1;});
+    if(linhaExist>0){await api.spreadsheets.values.update({spreadsheetId:sheetsModule.SPREADSHEET_ID,range:ABA.OCS+'!D'+linhaExist+':F'+linhaExist,valueInputOption:'USER_ENTERED',requestBody:{values:[[canal||'','',canalMacro||'']]}});}
+    else{await adicionarLinhas(ABA.OCS,[[oc,'',eventoCod,canal||'','',canalMacro||'']]);}
+    del('ocs'); res.json({ok:true});
+  } catch(e){res.json({erro:e.message});}
+});
+
+// ====================================================
+// SALVAR PLANO EVENTO
+// ====================================================
+router.post('/salvar_plano_evento', async (req, res) => {
+  try {
+    const { plano, eventoCod } = req.body;
+    if (!plano||!eventoCod) return res.json({erro:'Parâmetros inválidos'});
+    const { del } = require('./cache');
+    const todas = await getOCs();
+    const existe = todas.find(o=>o.plano?.trim()===plano.trim()&&o.eventoCod===eventoCod);
+    if(!existe){await adicionarLinhas(ABA.OCS,[['',plano,eventoCod,'',inferirCategoria(plano),'']]);del('ocs');}
+    res.json({ok:true});
+  } catch(e){res.json({erro:e.message});}
+});
+
+// ====================================================
+// DELETAR OC EVENTO
+// ====================================================
+router.post('/deletar_oc_evento', async (req, res) => {
+  try {
+    const {oc,eventoCod}=req.body;
+    if(!oc||!eventoCod) return res.json({erro:'Parâmetros inválidos'});
+    const {del}=require('./cache');
+    const sheetsModule=require('./sheets');
+    const {google}=require('googleapis');
+    const auth=new google.auth.JWT(process.env.GOOGLE_CLIENT_EMAIL,null,(process.env.GOOGLE_PRIVATE_KEY||'').replace(/\\n/g,'\n').replace(/^"|"$/g,''),['https://www.googleapis.com/auth/spreadsheets']);
+    const api=google.sheets({version:'v4',auth});
+    const rows=await lerAba(ABA.OCS);
+    const meta=await api.spreadsheets.get({spreadsheetId:sheetsModule.SPREADSHEET_ID});
+    const sheet=meta.data.sheets.find(s=>s.properties.title===ABA.OCS);
+    if(!sheet) return res.json({erro:'Aba não encontrada'});
+    const sheetId=sheet.properties.sheetId;
+    const linhas=[];
+    rows.forEach((r,i)=>{if(i===0)return;if(String(r[0]||'').trim()===oc.trim()&&String(r[2]||'').trim()===eventoCod)linhas.push(i);});
+    if(!linhas.length) return res.json({ok:true});
+    linhas.sort((a,b)=>b-a);
+    const requests=linhas.map(idx=>({deleteDimension:{range:{sheetId,dimension:'ROWS',startIndex:idx,endIndex:idx+1}}}));
+    await api.spreadsheets.batchUpdate({spreadsheetId:sheetsModule.SPREADSHEET_ID,requestBody:{requests}});
+    del('ocs'); res.json({ok:true});
+  } catch(e){res.json({erro:e.message});}
+});
+
+// ====================================================
+// DELETAR PLANO EVENTO
+// ====================================================
+router.post('/deletar_plano_evento', async (req, res) => {
+  try {
+    const {plano,eventoCod}=req.body;
+    if(!plano||!eventoCod) return res.json({erro:'Parâmetros inválidos'});
+    const {del}=require('./cache');
+    const sheetsModule=require('./sheets');
+    const {google}=require('googleapis');
+    const auth=new google.auth.JWT(process.env.GOOGLE_CLIENT_EMAIL,null,(process.env.GOOGLE_PRIVATE_KEY||'').replace(/\\n/g,'\n').replace(/^"|"$/g,''),['https://www.googleapis.com/auth/spreadsheets']);
+    const api=google.sheets({version:'v4',auth});
+    const rows=await lerAba(ABA.OCS);
+    const meta=await api.spreadsheets.get({spreadsheetId:sheetsModule.SPREADSHEET_ID});
+    const sheet=meta.data.sheets.find(s=>s.properties.title===ABA.OCS);
+    if(!sheet) return res.json({erro:'Aba não encontrada'});
+    const sheetId=sheet.properties.sheetId;
+    const linhas=[];
+    rows.forEach((r,i)=>{if(i===0)return;if(String(r[1]||'').trim()===plano.trim()&&String(r[2]||'').trim()===eventoCod)linhas.push(i);});
+    if(!linhas.length) return res.json({ok:true});
+    linhas.sort((a,b)=>b-a);
+    const requests=linhas.map(idx=>({deleteDimension:{range:{sheetId,dimension:'ROWS',startIndex:idx,endIndex:idx+1}}}));
+    await api.spreadsheets.batchUpdate({spreadsheetId:sheetsModule.SPREADSHEET_ID,requestBody:{requests}});
+    del('ocs'); res.json({ok:true});
+  } catch(e){res.json({erro:e.message});}
+});
+
+// ====================================================
+// REPROCESSAR OCS_PLANOS
+// ====================================================
+router.post('/reprocessar_ocs_planos', async (req, res) => {
+  try {
+    const {del}=require('./cache');
+    const sheetsModule=require('./sheets');
+    const {google}=require('googleapis');
+    const auth=new google.auth.JWT(process.env.GOOGLE_CLIENT_EMAIL,null,(process.env.GOOGLE_PRIVATE_KEY||'').replace(/\\n/g,'\n').replace(/^"|"$/g,''),['https://www.googleapis.com/auth/spreadsheets']);
+    const api=google.sheets({version:'v4',auth});
+    const ocsRows=await lerAba(ABA.OCS);
+    const data=[];
+    for(let i=1;i<ocsRows.length;i++){
+      const r=ocsRows[i],oc=String(r[0]||'').trim(),pl=String(r[1]||'').trim();
+      if(!oc&&!pl)continue;
+      const inf=await inferirCanal(oc,pl);
+      const canalFinal=inf.canal||String(r[3]||'').trim();
+      const macroFinal=inf.canalMacro||String(r[5]||'').trim();
+      const catOCS=inferirCategoria(pl);
+      data.push({range:ABA.OCS+'!D'+(i+1)+':F'+(i+1),values:[[canalFinal,catOCS,macroFinal]]});
+    }
+    const BLOCO=500;
+    for(let i=0;i<data.length;i+=BLOCO) await api.spreadsheets.values.batchUpdate({spreadsheetId:sheetsModule.SPREADSHEET_ID,requestBody:{valueInputOption:'USER_ENTERED',data:data.slice(i,i+BLOCO)}});
+    del('ocs'); res.json({ok:true,atualizados:data.length});
+  } catch(e){res.json({erro:e.message});}
+});
+
 rotasOk.forEach(rota => { router.post(rota, (req, res) => res.json({ ok:true })); router.get(rota, (req, res) => res.json({ ok:true })); });
 
 module.exports = router;
