@@ -96,9 +96,9 @@ async function getEventos() {
         produto:   String(r[2]||'').trim(),
         cidade:    String(r[3]||'').trim(),
         mesAno:    String(mesAno||'').trim(),
-        dtIniVend: String(r[5]||'').trim().slice(0,10),
-        dtEvento:  String(r[6]||'').trim().slice(0,10),
-        dtFimEv:   String(r[7]||'').trim().slice(0,10),
+        dtIniVend: toDateStr(String(r[5]||'').trim()),
+        dtEvento:  toDateStr(String(r[6]||'').trim()),
+        dtFimEv:   toDateStr(String(r[7]||'').trim()),
         capacidade: parseInt(r[8]) || '',
       };
     });
