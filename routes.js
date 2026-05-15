@@ -525,7 +525,7 @@ router.get('/relatorio_semanal', async (req, res) => {
     const dados  = await getVendasRows();
     const eventosInfo = await getEventos();
     const mapaData = {};
-    eventosInfo.forEach(e => { mapaData[e.nome] = e.dtEvento || '9999-99-99'; });
+    eventosInfo.forEach(e => { mapaData[e.nome] = toDateStr(e.dtEvento) || toDateStr(e.dtFimEv) || '9999-99-99'; });
 
     const bloco = () => ({ totalVendas:0,totalHC:0,totalValor:0,normalVendas:0,normalHC:0,vipVendas:0,vipHC:0,upgradeVendas:0,upgradeHC:0,cancelVendas:0,cancelHC:0 });
     const acumular = (obj, hc, val, cat, isCancel) => {
@@ -585,7 +585,7 @@ router.post('/relatorio_semanal_rc', async (req, res) => {
     const dados  = await getVendasRows();
     const eventosInfo = await getEventos();
     const mapaData = {};
-    eventosInfo.forEach(e => { mapaData[e.nome] = e.dtEvento || '9999-99-99'; });
+    eventosInfo.forEach(e => { mapaData[e.nome] = toDateStr(e.dtEvento) || toDateStr(e.dtFimEv) || '9999-99-99'; });
 
     const bloco = () => ({ totalVendas:0,totalHC:0,totalValor:0,normalVendas:0,normalHC:0,vipVendas:0,vipHC:0,upgradeVendas:0,upgradeHC:0,cancelVendas:0,cancelHC:0 });
     const acumular = (obj, hc, val, cat, isCancel) => {
@@ -1908,7 +1908,7 @@ router.post('/relatorio_dinamico', async (req, res) => {
     const sems        = await getCalendario();
 
     const mapaData = {};
-    eventosInfo.forEach(e => { mapaData[e.nome] = e.dtEvento || '9999-99-99'; });
+    eventosInfo.forEach(e => { mapaData[e.nome] = toDateStr(e.dtEvento) || toDateStr(e.dtFimEv) || '9999-99-99'; });
 
     const match = (filtro, valor) => !filtro || filtro.length === 0 || filtro.includes(valor);
 
