@@ -122,23 +122,41 @@ const CadVendedores = {
       const nivelStr   = nivelLabel[v.nivel] || '';
       const dtStr      = v.dtInicio ? v.dtInicio.split('-').reverse().join('/') : '';
       const sub        = [v.equipe, nivelStr, dtStr].filter(Boolean).join(' · ');
+      const equipes = [...new Set(this.dados.map(d => d.equipe).filter(Boolean))].sort();
+      const optsEq = equipes.map(eq => `<option value="${eq}" ${eq===v.equipe?'selected':''}>${eq}</option>`).join('');
       return `
-      <div class="list-item" style="flex-wrap:wrap;gap:var(--s2)">
+      <div class="list-item" style="flex-wrap:wrap;gap:var(--s2);align-items:flex-start;padding:var(--s3) var(--s4)">
         <div class="avatar ${v.ativo ? 'avatar-gold' : ''}" style="${!v.ativo ? 'background:var(--bg-3);color:var(--text-3)' : ''}">${Utils.iniciais(v.apelido || v.nome)}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;color:${v.ativo ? 'var(--text)' : 'var(--text-3)'}" class="truncate">${v.apelido || v.nome}</div>
           <div style="font-size:11px;color:var(--text-3)">${v.codigo}${sub ? ' · ' + sub : ''}</div>
+          <!-- Campos inline editáveis -->
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+            <input type="text" value="${v.apelido||''}" placeholder="Apelido"
+              style="font-size:11px;padding:3px 8px;background:var(--bg-3);border:1px solid var(--border);border-radius:var(--r2);color:var(--text);width:110px"
+              onchange="CadVendedores.salvarCampo('${v.codigo}','apelido',this.value)"
+              title="Apelido">
+            <input type="date" value="${v.dtInicio||''}"
+              style="font-size:11px;padding:3px 8px;background:var(--bg-3);border:1px solid var(--border);border-radius:var(--r2);color:var(--text);width:130px"
+              onchange="CadVendedores.salvarCampo('${v.codigo}','dtInicio',this.value)"
+              title="Data de início">
+            <select style="font-size:11px;padding:3px 8px;background:var(--bg-3);border:1px solid var(--border);border-radius:var(--r2);color:var(--text);min-width:90px"
+              onchange="CadVendedores.salvarCampo('${v.codigo}','equipe',this.value)"
+              title="Equipe">
+              <option value="">Equipe</option>${optsEq}
+            </select>
+          </div>
         </div>
-        <button class="btn btn-sm btn-secondary"
-          onclick="CadVendedores.editar('${v.codigo}')"
-          title="Editar dados completos">
-          ✏️
-        </button>
-        <button class="btn btn-sm ${v.ativo ? 'btn-green' : 'btn-secondary'}"
-          onclick="CadVendedores.toggleAtivo('${v.codigo}',${v.ativo})"
-          style="${!v.ativo ? 'color:var(--text-3)' : ''}">
-          ${v.ativo ? '● Ativo' : '○ Inativo'}
-        </button>
+        <div style="display:flex;gap:var(--s2);flex-shrink:0">
+          <button class="btn btn-sm btn-secondary"
+            onclick="CadVendedores.editar('${v.codigo}')"
+            title="Editar todos os dados">✏️</button>
+          <button class="btn btn-sm ${v.ativo ? 'btn-green' : 'btn-secondary'}"
+            onclick="CadVendedores.toggleAtivo('${v.codigo}',${v.ativo})"
+            style="${!v.ativo ? 'color:var(--text-3)' : ''}">
+            ${v.ativo ? '● Ativo' : '○ Inativo'}
+          </button>
+        </div>
       </div>`;
     }).join('') || '<div class="empty"><div class="empty-title">Nenhum vendedor</div></div>';
   },
@@ -286,86 +304,74 @@ const CadEventos = {
   planos: [],
 
   async abrir() {
-    const m = document.createElement('div');
-    m.className = 'modal-overlay';
-    m.id = 'modal-eventos';
-    m.innerHTML = `
-      <div class="modal" style="max-height:92vh;display:flex;flex-direction:column">
-        <div class="modal-handle"></div>
-
-        <!-- CABEÇALHO -->
-        <div class="flex items-center justify-between" style="margin-bottom:var(--s4);flex-shrink:0">
-          <div class="modal-title" id="ev-titulo">Eventos</div>
-          <button class="btn btn-sm btn-secondary" onclick="document.getElementById('modal-eventos').remove()">✕</button>
+    const tela = document.getElementById('cadastros-content');
+    if (!tela) return;
+    tela.innerHTML = `
+      <div style="display:flex;flex-direction:column;height:100%">
+        <div style="display:flex;align-items:center;gap:var(--s3);padding:var(--s4) var(--s5);border-bottom:1px solid var(--border);flex-shrink:0">
+          <button class="btn btn-sm btn-secondary" id="ev-btn-voltar" onclick="Cadastros._voltarMenu()">← Voltar</button>
+          <div class="modal-title" id="ev-titulo" style="margin:0">Eventos</div>
+          <button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="CadEventos.novoEvento()">+ Novo</button>
         </div>
 
         <!-- LISTA DE EVENTOS -->
-        <div id="ev-lista-wrap" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
-          <div style="display:flex;gap:var(--s2);margin-bottom:var(--s3);flex-shrink:0">
-            <input type="text" id="ev-busca" class="input" placeholder="Buscar evento..."
-              style="flex:1" oninput="CadEventos.renderLista()">
-            <button class="btn btn-primary" onclick="CadEventos.novoEvento()">+ Novo</button>
-          </div>
-          <div id="ev-lista" style="overflow-y:auto;flex:1">
+        <div id="ev-lista-wrap" style="display:flex;flex-direction:column;flex:1;overflow:hidden;padding:var(--s4) var(--s5)">
+          <input type="text" id="ev-busca" class="input" placeholder="Buscar evento..."
+            style="margin-bottom:var(--s3)" oninput="CadEventos.renderLista()">
+          <div id="ev-lista" class="scroll-area" style="flex:1;padding:0">
             <div class="spinner" style="margin:20px auto"></div>
           </div>
         </div>
 
         <!-- DETALHE DO EVENTO -->
-        <div id="ev-detalhe" style="display:none;flex:1;overflow-y:auto;flex-direction:column">
-          <button class="btn btn-ghost btn-sm" style="margin-bottom:var(--s3);padding-left:0"
-            onclick="CadEventos.voltarLista()">← Voltar</button>
-
-          <!-- FORM DADOS -->
-          <div id="ev-form"></div>
-
-          <!-- PLANOS -->
-          <div style="margin-top:var(--s5)">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3)">
-              <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)">Planos</div>
-              <div style="display:flex;gap:var(--s2)">
-                <button class="btn btn-sm btn-secondary" onclick="CadEventos.reprocessarCategorias()" title="Reaplica a inferência de categoria em todos os planos">↺ Reprocessar Categorias</button>
-                <button class="btn btn-sm btn-secondary" onclick="CadEventos.mostrarAddPlano()">+ Adicionar</button>
-              </div>
-            </div>
-            <div id="ev-add-plano" style="display:none;margin-bottom:var(--s3)">
-              <textarea id="ev-novo-plano" class="input" rows="4"
-                placeholder="Um plano por linha:&#10;IMLS | FLN | ABR26 | CAT1 | 1 TKT&#10;IMLS | FLN | ABR26 | CAT2 | 2 TKT&#10;IMLS | FLN | ABR26 | VIP | 2 TKT"
-                style="resize:vertical;font-family:var(--font-mono);font-size:12px"></textarea>
-              <div style="font-size:11px;color:var(--text-3);margin:var(--s2) 0">Um plano por linha. Separe também por vírgula ou ponto-e-vírgula.</div>
-              <div style="display:flex;gap:var(--s2)">
-                <button class="btn btn-primary btn-sm" onclick="CadEventos.addPlanos()">Adicionar</button>
-                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('ev-add-plano').style.display='none'">Cancelar</button>
-              </div>
-            </div>
-            <div id="ev-planos-lista"></div>
+        <div id="ev-detalhe" style="display:none;flex:1;overflow:hidden;flex-direction:column">
+          <div style="padding:var(--s4) var(--s5);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:var(--s3)">
+            <button class="btn btn-sm btn-secondary" onclick="CadEventos.voltarLista()">← Eventos</button>
+            <div id="ev-detalhe-titulo" style="font-size:14px;font-weight:700;color:var(--text)"></div>
           </div>
+          <div class="scroll-area" style="flex:1;padding:var(--s4) var(--s5)">
+            <div id="ev-form"></div>
 
-          <!-- OCS -->
-          <div style="margin-top:var(--s5)">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3)">
-              <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)">OCs</div>
-              <div style="display:flex;gap:var(--s2)">
-                <button class="btn btn-sm btn-secondary" onclick="CadEventos.reprocessarCanais()" title="Reaplica as regras de canal em todas as OCs">↺ Reprocessar Canais</button>
-                <button class="btn btn-sm btn-secondary" onclick="CadEventos.mostrarAddOC()">+ Adicionar</button>
+            <div style="margin-top:var(--s5)">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3)">
+                <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)">Planos</div>
+                <div style="display:flex;gap:var(--s2)">
+                  <button class="btn btn-sm btn-secondary" onclick="CadEventos.reprocessarCategorias()">↺ Reprocessar</button>
+                  <button class="btn btn-sm btn-secondary" onclick="CadEventos.mostrarAddPlano()">+ Adicionar</button>
+                </div>
               </div>
-            </div>
-            <div id="ev-add-oc" style="display:none;margin-bottom:var(--s3)">
-              <textarea id="ev-nova-oc" class="input" rows="4"
-                placeholder="Uma OC por linha:&#10;IMLS_FLN_PP_TF&#10;IMLS_FLN_PP_VA&#10;IMLS_FLN_PP_RC"
-                style="resize:vertical;font-family:var(--font-mono);font-size:12px"></textarea>
-              <div style="font-size:11px;color:var(--text-3);margin:var(--s2) 0">Uma OC por linha. Canal inferido automaticamente pelo código.</div>
-              <div style="display:flex;gap:var(--s2)">
-                <button class="btn btn-primary btn-sm" onclick="CadEventos.addOCs()">Adicionar</button>
-                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('ev-add-oc').style.display='none'">Cancelar</button>
+              <div id="ev-add-plano" style="display:none;margin-bottom:var(--s3)">
+                <textarea id="ev-novo-plano" class="input" rows="4"
+                  placeholder="Um plano por linha" style="resize:vertical;font-family:var(--font-mono);font-size:12px"></textarea>
+                <div style="display:flex;gap:var(--s2);margin-top:var(--s2)">
+                  <button class="btn btn-primary btn-sm" onclick="CadEventos.addPlanos()">Adicionar</button>
+                  <button class="btn btn-secondary btn-sm" onclick="document.getElementById('ev-add-plano').style.display='none'">Cancelar</button>
+                </div>
               </div>
+              <div id="ev-planos-lista"></div>
             </div>
-            <div id="ev-ocs-lista"></div>
+
+            <div style="margin-top:var(--s5)">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3)">
+                <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)">OCs</div>
+                <div style="display:flex;gap:var(--s2)">
+                  <button class="btn btn-sm btn-secondary" onclick="CadEventos.reprocessarCanais()">↺ Reprocessar</button>
+                  <button class="btn btn-sm btn-secondary" onclick="CadEventos.mostrarAddOC()">+ Adicionar</button>
+                </div>
+              </div>
+              <div id="ev-add-oc" style="display:none;margin-bottom:var(--s3)">
+                <textarea id="ev-nova-oc" class="input" rows="4"
+                  placeholder="Uma OC por linha" style="resize:vertical;font-family:var(--font-mono);font-size:12px"></textarea>
+                <div style="display:flex;gap:var(--s2);margin-top:var(--s2)">
+                  <button class="btn btn-primary btn-sm" onclick="CadEventos.addOCs()">Adicionar</button>
+                  <button class="btn btn-secondary btn-sm" onclick="document.getElementById('ev-add-oc').style.display='none'">Cancelar</button>
+                </div>
+              </div>
+              <div id="ev-ocs-lista"></div>
+            </div>
           </div>
         </div>
       </div>`;
-    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
-    document.body.appendChild(m);
     await this.carregar();
   },
 
@@ -653,64 +659,52 @@ const CadCanais = {
   regras: [],
 
   async abrir() {
-    const m = document.createElement('div');
-    m.className = 'modal-overlay';
-    m.id = 'modal-canais';
-    m.innerHTML = `
-      <div class="modal" style="max-height:92vh;display:flex;flex-direction:column">
-        <div class="modal-handle"></div>
-        <div class="flex items-center justify-between" style="margin-bottom:var(--s4);flex-shrink:0">
-          <div class="modal-title">Regras de Canal</div>
-          <button class="btn btn-sm btn-secondary" onclick="document.getElementById('modal-canais').remove()">✕</button>
+    const tela = document.getElementById('cadastros-content');
+    if (!tela) return;
+    tela.innerHTML = `
+      <div style="display:flex;flex-direction:column;height:100%">
+        <div style="display:flex;align-items:center;gap:var(--s3);padding:var(--s4) var(--s5);border-bottom:1px solid var(--border);flex-shrink:0">
+          <button class="btn btn-sm btn-secondary" onclick="Cadastros._voltarMenu()">← Voltar</button>
+          <div style="font-size:16px;font-weight:700;color:var(--text)">Regras de Canal</div>
         </div>
-        <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4);flex-shrink:0">
-          Define como o canal é inferido automaticamente pelo código da OC.
-        </div>
-
-        <!-- Formulário nova regra -->
-        <div class="card card-sm" style="margin-bottom:var(--s4);flex-shrink:0">
-          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--s3)">Nova Regra</div>
-          <div style="display:flex;gap:var(--s2);flex-wrap:wrap;margin-bottom:var(--s3)">
-            <input id="rc-padrao" class="input" placeholder="Padrão (ex: _TF_ ou HOTMART)" style="flex:2;min-width:120px">
-            <select id="rc-tipo" class="input select" style="flex:1;min-width:110px">
-              <option value="igual_a">Igual a</option>
-              <option value="contem">Contém</option>
-              <option value="comeca_com">Começa com</option>
-              <option value="termina_com">Termina com</option>
-            </select>
-            <select id="rc-fonte" class="input select" style="flex:1;min-width:90px">
-              <option value="OC">na OC</option>
-              <option value="PLANO">no Plano</option>
-            </select>
-            <input id="rc-canal" class="input" placeholder="Sub-canal" list="rc-canais-list"
-              style="flex:2;min-width:120px" autocomplete="off">
-            <datalist id="rc-canais-list"></datalist>
-            <select id="rc-canal-macro" class="input select" style="flex:1;min-width:110px">
-              <option value="">Canal Macro *</option>
-              <option value="VA">VA - Venda Ativa</option>
-              <option value="VD">VD - Venda Direta</option>
-              <option value="RC">RC - Venda Recuperação</option>
-              <option value="GT">GT - Gratuito</option>
-            </select>
-            <button class="btn btn-secondary btn-sm" onclick="CadCanais.adicionarRascunho()" style="flex-shrink:0">+ Adicionar</button>
+        <div class="scroll-area" style="flex:1;padding:var(--s4) var(--s5)">
+          <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
+            Define como o canal é inferido automaticamente pelo código da OC.
           </div>
-          <!-- Rascunho -->
-          <div id="rc-rascunho" style="display:none;margin-bottom:var(--s3)">
-            <div style="font-size:11px;color:var(--text-3);margin-bottom:var(--s2)">Pendentes de salvar:</div>
-            <div id="rc-rascunho-lista"></div>
-            <button class="btn btn-primary btn-full" style="margin-top:var(--s3)" onclick="CadCanais.salvarRascunho()">
-              Salvar Todas na Planilha
-            </button>
+          <div class="card card-sm" style="margin-bottom:var(--s4)">
+            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--s3)">Nova Regra</div>
+            <div style="display:flex;gap:var(--s2);flex-wrap:wrap;margin-bottom:var(--s3)">
+              <input id="rc-padrao" class="input" placeholder="Padrão (ex: _TF_ ou HOTMART)" style="flex:2;min-width:120px">
+              <select id="rc-tipo" class="input select" style="flex:1;min-width:110px">
+                <option value="igual_a">Igual a</option>
+                <option value="contem">Contém</option>
+                <option value="comeca_com">Começa com</option>
+                <option value="termina_com">Termina com</option>
+              </select>
+              <select id="rc-fonte" class="input select" style="flex:1;min-width:90px">
+                <option value="OC">na OC</option>
+                <option value="PLANO">no Plano</option>
+              </select>
+              <input id="rc-canal" class="input" placeholder="Sub-canal" list="rc-canais-list" style="flex:2;min-width:120px" autocomplete="off">
+              <datalist id="rc-canais-list"></datalist>
+              <select id="rc-canal-macro" class="input select" style="flex:1;min-width:110px">
+                <option value="">Canal Macro *</option>
+                <option value="VA">VA - Venda Ativa</option>
+                <option value="VD">VD - Venda Direta</option>
+                <option value="RC">RC - Venda Recuperação</option>
+                <option value="GT">GT - Gratuito</option>
+              </select>
+              <button class="btn btn-secondary btn-sm" onclick="CadCanais.adicionarRascunho()" style="flex-shrink:0">+ Adicionar</button>
+            </div>
+            <div id="rc-rascunho" style="display:none;margin-bottom:var(--s3)">
+              <div style="font-size:11px;color:var(--text-3);margin-bottom:var(--s2)">Pendentes de salvar:</div>
+              <div id="rc-rascunho-lista"></div>
+              <button class="btn btn-primary btn-full" style="margin-top:var(--s3)" onclick="CadCanais.salvarRascunho()">Salvar Todas na Planilha</button>
+            </div>
           </div>
-        </div>
-
-        <!-- Lista de regras -->
-        <div id="rc-lista" style="overflow-y:auto;flex:1">
-          <div class="spinner" style="margin:20px auto"></div>
+          <div id="rc-lista"><div class="spinner" style="margin:20px auto"></div></div>
         </div>
       </div>`;
-    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
-    document.body.appendChild(m);
     await this.carregar();
   },
 
@@ -892,64 +886,53 @@ const CadCanais = {
 // ===== OCs / PLANOS — OPERAÇÕES EM MASSA =====
 const CadOCs = {
   async abrir() {
-    const m = document.createElement('div');
-    m.className = 'modal-overlay';
-    m.id = 'modal-ocs';
-    m.innerHTML = `
-      <div class="modal" style="max-height:92vh;display:flex;flex-direction:column">
-        <div class="modal-handle"></div>
-        <div class="flex items-center justify-between" style="margin-bottom:var(--s4);flex-shrink:0">
-          <div class="modal-title">OCs &amp; Planos</div>
-          <button class="btn btn-sm btn-secondary" onclick="document.getElementById('modal-ocs').remove()">✕</button>
-        </div>
-        <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s5);flex-shrink:0">
-          Operações em massa para todos os eventos. Use com cautela — atualiza a planilha inteira.
-        </div>
-
-        <div class="card card-sm" style="margin-bottom:var(--s3);border-color:var(--accent)">
-          <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:var(--s2)">⚡ Reprocessar Tudo</div>
-          <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
-            Atualiza Canal, Canal Macro, Categoria, Evento, Pontos, Semana e Mês em todas as vendas de uma só vez.
+    const tela = document.getElementById('cadastros-content');
+    if (!tela) return;
+    tela.innerHTML = `
+      <div style="display:flex;flex-direction:column;height:100%">
+        <div style="display:flex;align-items:center;gap:var(--s3);padding:var(--s4) var(--s5);border-bottom:1px solid var(--border);flex-shrink:0">
+          <button class="btn btn-sm btn-secondary" onclick="Cadastros._voltarMenu()">← Voltar</button>
+          <div style="font-size:16px;font-weight:700;color:var(--text)">OCs & Planos</div>
+          <div style="display:flex;gap:var(--s2);margin-left:auto">
+            <button class="btn btn-sm btn-secondary" onclick="CadOCs.abrirVincular()">🔗 Vincular</button>
+            <button class="btn btn-sm btn-secondary" onclick="CadOCs.abrirRevisao()">🔍 Revisar OCs</button>
           </div>
-          <button class="btn btn-primary btn-full" id="btn-rep-tudo" onclick="CadOCs.reprocessarTudo()">⚡ Reprocessar Tudo</button>
-          <div id="res-tudo" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
         </div>
-
-        <div class="card card-sm" style="margin-bottom:var(--s3)">
-          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:var(--s2)">↺ Reprocessar Canais</div>
+        <div class="scroll-area" style="flex:1;padding:var(--s4) var(--s5)">
           <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
-            Relê as Regras de Canal e atualiza o Sub-canal e Canal Macro de todas as OCs e todas as vendas da planilha.
+            Operações em massa para todos os eventos. Use com cautela — atualiza a planilha inteira.
           </div>
-          <button class="btn btn-primary btn-full" id="btn-rep-canais" onclick="CadOCs.reprocessarCanais()">
-            Reprocessar Todos os Canais
-          </button>
-          <div id="res-canais" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
-        </div>
 
-        <div class="card card-sm" style="margin-bottom:var(--s3)">
-          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:var(--s2)">↺ Reprocessar Categorias</div>
-          <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
-            Relê o Plano de cada venda e atualiza a coluna CATEGORIA (NORMAL, VIP, ESSENTIAL, UPGRADE) em toda a planilha.
+          <div class="card card-sm" style="margin-bottom:var(--s3);border-color:var(--accent)">
+            <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:var(--s2)">⚡ Reprocessar Tudo</div>
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
+              Atualiza Canal, Canal Macro, Categoria, Evento, Pontos, Semana e Mês em todas as vendas de uma só vez.
+            </div>
+            <button class="btn btn-primary btn-full" id="btn-rep-tudo" onclick="CadOCs.reprocessarTudo()">⚡ Reprocessar Tudo</button>
+            <div id="res-tudo" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
           </div>
-          <button class="btn btn-primary btn-full" id="btn-rep-cats" onclick="CadOCs.reprocessarCategorias()">
-            Reprocessar Todas as Categorias
-          </button>
-          <div id="res-cats" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
-        </div>
 
-        <div class="card card-sm" style="margin-bottom:var(--s3);border-color:#e85d5d">
-          <div style="font-size:13px;font-weight:600;color:#e85d5d;margin-bottom:var(--s2)">🧹 Remover Duplicatas</div>
-          <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
-            Remove vendas com ID duplicado, mantendo somente a primeira ocorrência de cada venda.
+          <div class="card card-sm" style="margin-bottom:var(--s3)">
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:var(--s2)">↺ Reprocessar OCs & Planos</div>
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
+              Atualiza Canal, Categoria e Canal Macro na aba OCS_PLANOS com base nas regras de canal.
+            </div>
+            <button class="btn btn-primary btn-full" id="btn-rep-ocs" onclick="CadOCs.reprocessarOCsPlanos()">↺ Reprocessar OCs & Planos</button>
+            <div id="res-ocs" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
           </div>
-          <button class="btn btn-full" id="btn-rem-dup" style="background:#e85d5d;color:#fff;border:none" onclick="CadOCs.removerDuplicatas()">
-            🧹 Remover Duplicatas
-          </button>
-          <div id="res-dup" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
+
+          <div class="card card-sm" style="margin-bottom:var(--s3);border-color:#e85d5d">
+            <div style="font-size:13px;font-weight:600;color:#e85d5d;margin-bottom:var(--s2)">🧹 Remover Duplicatas</div>
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:var(--s4)">
+              Remove vendas com ID duplicado, mantendo somente a primeira ocorrência de cada venda.
+            </div>
+            <button class="btn btn-full" id="btn-rem-dup" style="background:#e85d5d;color:#fff;border:none" onclick="CadOCs.removerDuplicatas()">
+              🧹 Remover Duplicatas
+            </button>
+            <div id="res-dup" style="margin-top:var(--s3);font-size:12px;color:var(--text-3)"></div>
+          </div>
         </div>
       </div>`;
-    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
-    document.body.appendChild(m);
   },
 
   async removerDuplicatas() {
