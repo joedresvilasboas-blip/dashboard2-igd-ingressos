@@ -136,7 +136,7 @@ const CadVendedores = {
               style="font-size:11px;padding:3px 8px;background:var(--bg-3);border:1px solid var(--border);border-radius:var(--r2);color:var(--text);width:110px"
               onchange="CadVendedores.salvarCampo('${v.codigo}','apelido',this.value)"
               title="Apelido">
-            <input type="date" value="${v.dtInicio||''}"
+            <input type="date" value="${(() => { const d=v.dtInicio||''; const m=d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m?m[3]+'-'+m[2]+'-'+m[1]:d; })()}"
               style="font-size:11px;padding:3px 8px;background:var(--bg-3);border:1px solid var(--border);border-radius:var(--r2);color:var(--text);width:130px"
               onchange="CadVendedores.salvarCampo('${v.codigo}','dtInicio',this.value)"
               title="Data de início">
