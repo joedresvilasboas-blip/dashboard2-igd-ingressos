@@ -259,14 +259,11 @@ const CadVendedores = {
     reader.onload = async (e) => {
       const linhas = this._parsearCSV(e.target.result);
       if (!linhas.length) { Utils.toast('Nenhum vendedor encontrado no CSV', 'error'); return; }
-      const btn = document.getElementById('btn-upload-vend');
-      Utils.btnLoading(btn, true);
       try {
         const res = await API.uploadVendedores(linhas);
         Utils.toast(`${res.inseridos} adicionados · ${res.ignorados} já existiam`, 'success');
         await this.carregar();
-      } catch { Utils.toast('Erro ao importar', 'error'); }
-      Utils.btnLoading(btn, false);
+      } catch(e) { Utils.toast('Erro ao importar: ' + e.message, 'error'); }
       input.value = '';
     };
     reader.readAsText(file, 'utf-8');
