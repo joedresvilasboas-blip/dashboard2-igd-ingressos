@@ -932,6 +932,339 @@ const CadOCs = {
       </div>`;
   },
 
+  async reprocessarOCsPlanos() {
+    const btn    = document.getElementById('btn-rep-ocs');
+    const res_el = document.getElementById('res-ocs');
+    Utils.btnLoading(btn, true);
+    res_el.textContent = 'Processando...';
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+      const raw = await fetch('/api/reprocessar_ocs_planos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const res = await raw.json();
+      if (res.erro) throw new Error(res.erro);
+      res_el.innerHTML = `<span style="color:var(--green)">✓ ${res.atualizados} OCs & Planos atualizados!</span>`;
+    } catch(e) {
+      res_el.innerHTML = `<span style="color:var(--red)">Erro: ${e.message}</span>`;
+    }
+    Utils.btnLoading(btn, false);
+  },
+
+  async abrirVincular() {
+    const m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'modal-vincular-ocs';
+    m.innerHTML = `
+      <div class="modal" style="max-height:95vh;display:flex;flex-direction:column;max-width:800px;width:100%">
+        <div class="modal-handle"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3);flex-shrink:0">
+          <div class="modal-title">🔗 Vincular OCs & Planos a Eventos</div>
+          <button class="btn btn-sm btn-secondary" onclick="document.getElementById('modal-vincular-ocs').remove()">✕</button>
+        </div>
+        <div style="display:flex;gap:var(--s2);margin-bottom:var(--s3);flex-shrink:0;border-bottom:1px solid var(--border);padding-bottom:var(--s2)">
+          <button id="tab-ocs-btn" class="tab active" onclick="CadOCs._mudarAbaVincular('ocs')">OCs sem cadastro</button>
+          <button id="tab-planos-btn" class="tab" onclick="CadOCs._mudarAbaVincular('planos')">Planos sem cadastro</button>
+        </div>
+        <div id="vincular-acoes" style="display:none;align-items:center;gap:var(--s2);margin-bottom:var(--s3);
+          padding:var(--s3);background:var(--accent-dim);border-radius:var(--r2);flex-shrink:0">
+          <span id="vincular-sel-count" style="font-size:12px;color:var(--accent);font-weight:600"></span>
+          <span style="font-size:12px;color:var(--text-3)">selecionadas — Vincular ao evento:</span>
+          <select id="vincular-destino" class="input select" style="flex:1;min-width:160px">
+            <option value="">Selecione o evento...</option>
+          </select>
+          <button class="btn btn-sm btn-primary" onclick="CadOCs._vincularSelecionados(this)">Vincular</button>
+          <button class="btn btn-sm btn-secondary" onclick="CadOCs._limparSelecaoVincular()">✕</button>
+        </div>
+        <div id="vincular-busca-wrap" style="margin-bottom:var(--s3);flex-shrink:0">
+          <input id="vincular-busca" type="text" class="input" placeholder="Buscar..." oninput="CadOCs._renderVincular()">
+        </div>
+        <div id="vincular-lista" style="overflow-y:auto;flex:1">
+          <div class="spinner" style="margin:40px auto"></div>
+        </div>
+      </div>`;
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    document.body.appendChild(m);
+    this._abaVincular = 'ocs';
+    this._selVincular = new Set();
+    this._dadosVincular = null;
+    await this._carregarVincular();
+  },
+
+  _mudarAbaVincular(aba) {
+    this._abaVincular = aba;
+    this._selVincular = new Set();
+    document.getElementById('tab-ocs-btn')?.classList.toggle('active', aba === 'ocs');
+    document.getElementById('tab-planos-btn')?.classList.toggle('active', aba === 'planos');
+    this._atualizarAcoesVincular();
+    this._renderVincular();
+  },
+
+  async _carregarVincular() {
+    try {
+      const d = await API.get('listar_sem_cadastro');
+      this._dadosVincular = d;
+      const opts = (d.eventos || []).map(e => `<option value="${e.codigo}">${e.nome}</option>`).join('');
+      const sel  = document.getElementById('vincular-destino');
+      if (sel) sel.innerHTML = '<option value="">Selecione o evento...</option>' + opts;
+      this._renderVincular();
+    } catch(e) {
+      const el = document.getElementById('vincular-lista');
+      if (el) el.innerHTML = `<div class="empty"><div class="empty-title">Erro: ${e.message}</div></div>`;
+    }
+  },
+
+  _renderVincular() {
+    const el = document.getElementById('vincular-lista');
+    if (!el || !this._dadosVincular) return;
+    const busca = (document.getElementById('vincular-busca')?.value || '').toLowerCase();
+    const aba   = this._abaVincular;
+    const itens = (aba === 'ocs' ? this._dadosVincular.ocs : this._dadosVincular.planos) || [];
+    const campo = aba === 'ocs' ? 'oc' : 'plano';
+    const filtrados = busca ? itens.filter(i => i[campo].toLowerCase().includes(busca)) : itens;
+
+    if (!filtrados.length) {
+      el.innerHTML = `<div class="empty"><div class="empty-icon">✓</div>
+        <div class="empty-title">Nenhum ${aba === 'ocs' ? 'OC' : 'Plano'} sem cadastro!</div></div>`;
+      return;
+    }
+
+    const todosSelected = filtrados.every(i => this._selVincular.has(i[campo]));
+    el.innerHTML = `
+      <div style="padding:6px 10px;background:var(--bg-3);border-radius:var(--r2);margin-bottom:var(--s2);display:flex;align-items:center;gap:8px">
+        <input type="checkbox" ${todosSelected?'checked':''} style="accent-color:var(--accent);width:14px;height:14px"
+          onchange="CadOCs._toggleTodosVincular(this.checked)">
+        <span style="font-size:11px;color:var(--text-3)">Selecionar todos (${filtrados.length})</span>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">
+        <div style="display:grid;grid-template-columns:28px 1fr 120px 60px;gap:6px;
+          padding:6px 10px;background:var(--bg-3);border-bottom:1px solid var(--border)">
+          <div></div>
+          <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">${aba === 'ocs' ? 'OC' : 'Plano'}</div>
+          <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">Evento sugerido</div>
+          <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">Vendas</div>
+        </div>
+        ${filtrados.map(i => {
+          const val = i[campo];
+          const sel = this._selVincular.has(val);
+          return `<div style="display:grid;grid-template-columns:28px 1fr 120px 60px;gap:6px;
+            align-items:center;padding:7px 10px;border-bottom:1px solid var(--border);background:${sel?'var(--accent-dim)':''}">
+            <input type="checkbox" ${sel?'checked':''} style="accent-color:var(--accent);width:14px;height:14px"
+              onchange="CadOCs._toggleSelVincular('${val.replace(/'/g,"\'")}',this.checked)">
+            <div style="font-size:11px;color:var(--text);word-break:break-all">${val}</div>
+            <div style="font-size:10px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.eventoSugerido||'—'}</div>
+            <div style="font-size:11px;color:var(--accent);font-weight:600;text-align:center">${i.count}</div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  },
+
+  _toggleSelVincular(val, checked) {
+    if (checked) this._selVincular.add(val);
+    else this._selVincular.delete(val);
+    this._atualizarAcoesVincular();
+  },
+
+  _toggleTodosVincular(checked) {
+    const aba   = this._abaVincular;
+    const itens = (aba === 'ocs' ? this._dadosVincular?.ocs : this._dadosVincular?.planos) || [];
+    const campo = aba === 'ocs' ? 'oc' : 'plano';
+    const busca = (document.getElementById('vincular-busca')?.value || '').toLowerCase();
+    const filtrados = busca ? itens.filter(i => i[campo].toLowerCase().includes(busca)) : itens;
+    filtrados.forEach(i => { if (checked) this._selVincular.add(i[campo]); else this._selVincular.delete(i[campo]); });
+    this._atualizarAcoesVincular();
+    this._renderVincular();
+  },
+
+  _limparSelecaoVincular() {
+    this._selVincular = new Set();
+    this._atualizarAcoesVincular();
+    this._renderVincular();
+  },
+
+  _atualizarAcoesVincular() {
+    const el = document.getElementById('vincular-acoes');
+    const ct = document.getElementById('vincular-sel-count');
+    if (!el) return;
+    const n = this._selVincular.size;
+    el.style.display = n > 0 ? 'flex' : 'none';
+    if (ct) ct.textContent = `${n} ${this._abaVincular === 'ocs' ? 'OC' : 'Plano'}${n !== 1 ? 's' : ''}`;
+  },
+
+  async _vincularSelecionados(btn) {
+    const destino = document.getElementById('vincular-destino')?.value;
+    if (!destino) { Utils.toast('Selecione o evento de destino', 'error'); return; }
+    if (!this._selVincular.size) return;
+    const aba    = this._abaVincular;
+    const rota   = aba === 'ocs' ? 'salvar_ocs_lote' : 'salvar_planos_lote';
+    const campo  = aba === 'ocs' ? 'ocs' : 'planos';
+    const chave  = aba === 'ocs' ? 'oc' : 'plano';
+    const nomeEv = document.getElementById('vincular-destino')?.selectedOptions[0]?.text || destino;
+    Utils.btnLoading(btn, true);
+    try {
+      const res = await API.post(rota, { eventoCod: destino, [campo]: [...this._selVincular] });
+      if (res.erro) throw new Error(res.erro);
+      Utils.toast(`✓ ${res.inseridos} vinculado${res.inseridos !== 1?'s':''} ao evento ${nomeEv}!`, 'success');
+      if (aba === 'ocs') this._dadosVincular.ocs = this._dadosVincular.ocs.filter(i => !this._selVincular.has(i[chave]));
+      else this._dadosVincular.planos = this._dadosVincular.planos.filter(i => !this._selVincular.has(i[chave]));
+      this._selVincular = new Set();
+      this._atualizarAcoesVincular();
+      this._renderVincular();
+    } catch(e) { Utils.toast('Erro: ' + e.message, 'error'); }
+    Utils.btnLoading(btn, false);
+  },
+
+  async abrirRevisao() {
+    const m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'modal-revisao-ocs';
+    m.innerHTML = `
+      <div class="modal" style="max-height:95vh;display:flex;flex-direction:column;max-width:800px;width:100%">
+        <div class="modal-handle"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3);flex-shrink:0">
+          <div class="modal-title">🔍 Revisar OCs & Planos</div>
+          <button class="btn btn-sm btn-secondary" onclick="document.getElementById('modal-revisao-ocs').remove()">✕</button>
+        </div>
+        <div id="revisao-filtros" style="display:flex;gap:var(--s2);margin-bottom:var(--s3);flex-shrink:0;flex-wrap:wrap">
+          <input id="revisao-busca" type="text" class="input" placeholder="Buscar OC ou Plano..." style="flex:1;min-width:180px" oninput="CadOCs._renderRevisao()">
+          <select id="revisao-evento" class="input select" style="min-width:180px" onchange="CadOCs._renderRevisao()">
+            <option value="">Todos os eventos</option>
+          </select>
+        </div>
+        <div id="revisao-acoes" style="display:none;align-items:center;gap:var(--s2);margin-bottom:var(--s3);
+          padding:var(--s3);background:var(--accent-dim);border-radius:var(--r2);flex-shrink:0">
+          <span id="revisao-sel-count" style="font-size:12px;color:var(--accent);font-weight:600"></span>
+          <span style="font-size:12px;color:var(--text-3)">selecionadas — Mover para:</span>
+          <select id="revisao-destino" class="input select" style="flex:1;min-width:160px">
+            <option value="">Selecione o evento...</option>
+          </select>
+          <button class="btn btn-sm btn-primary" onclick="CadOCs._moverSelecionadas(this)">Mover</button>
+          <button class="btn btn-sm btn-secondary" onclick="CadOCs._limparSelecao()">✕</button>
+        </div>
+        <div id="revisao-lista" style="overflow-y:auto;flex:1">
+          <div class="spinner" style="margin:40px auto"></div>
+        </div>
+      </div>`;
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    document.body.appendChild(m);
+    await this._carregarRevisao();
+  },
+
+  async _carregarRevisao() {
+    try {
+      const d = await API.get('listar_ocs_planos');
+      this._grupos  = d.grupos  || [];
+      this._eventos = d.eventos || [];
+      this._selecionados = new Set();
+      const optsEvento = this._eventos.map(e => `<option value="${e.codigo}">${e.nome}</option>`).join('');
+      const selFiltro  = document.getElementById('revisao-evento');
+      const selDestino = document.getElementById('revisao-destino');
+      if (selFiltro)  selFiltro.innerHTML  = '<option value="">Todos os eventos</option>' + optsEvento;
+      if (selDestino) selDestino.innerHTML = '<option value="">Selecione o evento...</option>' + optsEvento;
+      this._renderRevisao();
+    } catch(e) {
+      const el = document.getElementById('revisao-lista');
+      if (el) el.innerHTML = `<div class="empty"><div class="empty-title">Erro: ${e.message}</div></div>`;
+    }
+  },
+
+  _renderRevisao() {
+    const el     = document.getElementById('revisao-lista');
+    if (!el) return;
+    const busca  = (document.getElementById('revisao-busca')?.value || '').toLowerCase();
+    const evFilt = document.getElementById('revisao-evento')?.value || '';
+    let grupos = this._grupos || [];
+    if (evFilt) grupos = grupos.filter(g => g.eventoCod === evFilt);
+    const html = grupos.map(g => {
+      const itens = g.itens.filter(i => !busca || i.oc.toLowerCase().includes(busca) || (i.plano||'').toLowerCase().includes(busca));
+      if (!itens.length) return '';
+      const linhas = itens.map(i => {
+        const key = i.oc;
+        const sel = this._selecionados?.has(key);
+        return `<div style="display:grid;grid-template-columns:28px 1fr 1fr 80px 50px;gap:6px;
+          align-items:center;padding:6px 10px;border-bottom:1px solid var(--border);background:${sel?'var(--accent-dim)':''}">
+          <input type="checkbox" ${sel?'checked':''} style="accent-color:var(--accent);width:14px;height:14px"
+            onchange="CadOCs._toggleSelecao('${key.replace(/'/g,"\'")}',this.checked)">
+          <div style="font-size:11px;color:var(--text);word-break:break-all">${i.oc}</div>
+          <div style="font-size:10px;color:var(--text-3);word-break:break-all">${i.plano||'—'}</div>
+          <div style="font-size:10px;color:var(--text-3)">${i.canal||'—'}</div>
+          <div style="font-size:10px;font-weight:600;color:var(--accent)">${i.canalMacro||'—'}</div>
+        </div>`;
+      }).join('');
+      if (!linhas) return '';
+      return `<div style="margin-bottom:var(--s3)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;
+          background:var(--bg-3);border-radius:var(--r2) var(--r2) 0 0;border:1px solid var(--border);border-bottom:none">
+          <div><span style="font-size:12px;font-weight:700;color:var(--text)">${g.eventoNome}</span>
+            <span style="font-size:10px;color:var(--text-3);margin-left:8px">${itens.length} OCs</span></div>
+          <button onclick="CadOCs._selecionarGrupo('${g.eventoCod}',this)"
+            style="font-size:10px;color:var(--accent);background:none;border:none;cursor:pointer">Selecionar todas</button>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:0 0 var(--r2) var(--r2);overflow:hidden">
+          <div style="display:grid;grid-template-columns:28px 1fr 1fr 80px 50px;gap:6px;
+            padding:5px 10px;background:var(--bg-3);border-bottom:1px solid var(--border)">
+            <div></div>
+            <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">OC</div>
+            <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">Plano</div>
+            <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">Canal</div>
+            <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">Macro</div>
+          </div>
+          ${linhas}
+        </div>
+      </div>`;
+    }).join('');
+    el.innerHTML = html || '<div class="empty"><div class="empty-title">Nenhuma OC encontrada</div></div>';
+  },
+
+  _toggleSelecao(oc, checked) {
+    if (!this._selecionados) this._selecionados = new Set();
+    if (checked) this._selecionados.add(oc); else this._selecionados.delete(oc);
+    this._atualizarAcoesRevisao();
+  },
+
+  _selecionarGrupo(eventoCod, btn) {
+    const grupo = this._grupos?.find(g => g.eventoCod === eventoCod);
+    if (!grupo) return;
+    if (!this._selecionados) this._selecionados = new Set();
+    const todasSel = grupo.itens.every(i => this._selecionados.has(i.oc));
+    grupo.itens.forEach(i => { if (todasSel) this._selecionados.delete(i.oc); else this._selecionados.add(i.oc); });
+    btn.textContent = todasSel ? 'Selecionar todas' : 'Desmarcar todas';
+    this._renderRevisao(); this._atualizarAcoesRevisao();
+  },
+
+  _limparSelecao() {
+    this._selecionados = new Set();
+    this._renderRevisao(); this._atualizarAcoesRevisao();
+  },
+
+  _atualizarAcoesRevisao() {
+    const el = document.getElementById('revisao-acoes');
+    const ct = document.getElementById('revisao-sel-count');
+    if (!el) return;
+    const n = this._selecionados?.size || 0;
+    el.style.display = n > 0 ? 'flex' : 'none';
+    if (ct) ct.textContent = `${n} OC${n !== 1 ? 's' : ''}`;
+  },
+
+  async _moverSelecionadas(btn) {
+    const destino = document.getElementById('revisao-destino')?.value;
+    if (!destino) { Utils.toast('Selecione o evento de destino', 'error'); return; }
+    if (!this._selecionados?.size) return;
+    const nomeEv = document.getElementById('revisao-destino')?.selectedOptions[0]?.text || destino;
+    if (!confirm(`Mover ${this._selecionados.size} OC(s) para "${nomeEv}"?`)) return;
+    Utils.btnLoading(btn, true);
+    try {
+      const res = await API.post('mover_ocs_evento', { ocs: [...this._selecionados], novoEventoCod: destino });
+      if (res.erro) throw new Error(res.erro);
+      Utils.toast(`✓ ${res.atualizadas} OC(s) movidas!`, 'success');
+      this._selecionados = new Set();
+      await this._carregarRevisao();
+    } catch(e) { Utils.toast('Erro: ' + e.message, 'error'); }
+    Utils.btnLoading(btn, false);
+  },
+
   async removerDuplicatas() {
     const btn    = document.getElementById('btn-rem-dup');
     const res_el = document.getElementById('res-dup');

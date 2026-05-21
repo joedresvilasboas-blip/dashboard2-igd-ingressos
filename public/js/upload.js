@@ -194,22 +194,14 @@ const Upload = {
       `<option value="${e}">${e}</option>`
     ).join('');
 
-    // Item de OC/Plano não vinculado a evento
+    // Item de OC/Plano com checkbox para seleção múltipla
     const renderItemNaoId = (codigo, tipo) => `
-      <div id="nid-${btoa(unescape(encodeURIComponent(codigo))).replace(/[+=\/]/g,'_')}"
-        style="padding:var(--s3) 0;border-bottom:1px solid var(--border)">
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text);margin-bottom:var(--s2)">${codigo}</div>
-        <div style="display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap">
-          <select class="input select" style="flex:1;min-width:160px;font-size:12px;padding:6px 10px"
-            id="sel-${btoa(unescape(encodeURIComponent(codigo))).replace(/[+=\/]/g,'_')}">
-            <option value="">— Selecionar evento —</option>
-            ${optsEvento}
-          </select>
-          <button class="btn btn-sm btn-primary"
-            onclick="Upload.vincular('${codigo.replace(/'/g,"\\'")}','${tipo}')">
-            Vincular
-          </button>
-        </div>
+      <div style="display:flex;align-items:center;gap:var(--s3);padding:var(--s2) 0;border-bottom:1px solid var(--border)">
+        <input type="checkbox" class="nid-check" data-codigo="${codigo}" data-tipo="${tipo}"
+          style="accent-color:var(--accent);width:16px;height:16px;flex-shrink:0"
+          onchange="Upload._atualizarSelecao()">
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          title="${codigo}">${codigo}</div>
       </div>`;
 
     // Item de OC sem canal — formulário de criar regra
@@ -249,11 +241,29 @@ const Upload = {
 
     let html = `<div class="card" style="margin-top:var(--s4);border-color:var(--accent)">
       <datalist id="sc-canais-list">${this._canais.sort().map(c => `<option value="${c}">`).join('')}</datalist>
-      <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:var(--s4)">⚠️ ${total} item${total !== 1 ? 'ns' : ''} precisam de atenção</div>`;
+      <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:var(--s3)">⚠️ ${total} item${total !== 1 ? 'ns' : ''} precisam de atenção</div>`;
 
     if (totalNaoId > 0) {
-      html += `<div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:var(--s3)">
-        Sem evento vinculado (${totalNaoId})</div>`;
+      html += `
+        <div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:var(--s3)">
+          Sem evento vinculado (${totalNaoId})
+        </div>
+        <!-- Controles de seleção e vinculação em lote -->
+        <div style="display:flex;gap:var(--s2);align-items:center;margin-bottom:var(--s3);flex-wrap:wrap;
+          padding:var(--s3);background:var(--bg-3);border-radius:var(--r2)">
+          <input type="checkbox" id="nid-select-all" style="accent-color:var(--accent);width:16px;height:16px"
+            onchange="Upload._selecionarTodos(this.checked)" title="Selecionar todos">
+          <span style="font-size:11px;color:var(--text-3)">Selecionar todos</span>
+          <select class="input select" id="nid-evento-global" style="flex:1;min-width:160px;font-size:12px;padding:5px 10px">
+            <option value="">— Selecionar evento —</option>
+            ${optsEvento}
+          </select>
+          <button class="btn btn-sm btn-primary" id="btn-vincular-lote" onclick="Upload.vincularLote()" disabled>
+            Vincular Selecionados
+          </button>
+          <span id="nid-sel-count" style="font-size:11px;color:var(--text-3)"></span>
+        </div>`;
+
       if (this._naoIdOCs.length) {
         html += `<div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:var(--s2)">OCs</div>`;
         html += this._naoIdOCs.map(oc => renderItemNaoId(oc, 'oc')).join('');
@@ -265,7 +275,7 @@ const Upload = {
     }
 
     if (totalSemCanal > 0) {
-      if (totalNaoId > 0) html += `<div class="divider"></div>`;
+      if (totalNaoId > 0) html += `<div class="divider" style="margin:var(--s3) 0"></div>`;
       html += `<div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:var(--s3)">
         Sem canal identificado (${totalSemCanal})</div>`;
       html += this._semCanal.map(oc => renderItemSemCanal(oc)).join('');
@@ -308,6 +318,57 @@ const Upload = {
         document.getElementById('upload-nao-id').innerHTML = '';
       }
     } catch { Utils.toast('Erro ao criar regra', 'error'); }
+  },
+
+  _atualizarSelecao() {
+    const checks = document.querySelectorAll('.nid-check:checked');
+    const total  = document.querySelectorAll('.nid-check').length;
+    const count  = checks.length;
+    const btn    = document.getElementById('btn-vincular-lote');
+    const ctEl   = document.getElementById('nid-sel-count');
+    const allCh  = document.getElementById('nid-select-all');
+    if (btn)   btn.disabled = count === 0;
+    if (ctEl)  ctEl.textContent = count > 0 ? `${count} selecionado${count!==1?'s':''}` : '';
+    if (allCh) allCh.checked = count === total && total > 0;
+  },
+
+  _selecionarTodos(checked) {
+    document.querySelectorAll('.nid-check').forEach(cb => cb.checked = checked);
+    this._atualizarSelecao();
+  },
+
+  async vincularLote() {
+    const evento = document.getElementById('nid-evento-global')?.value;
+    if (!evento) { Utils.toast('Selecione um evento primeiro', 'error'); return; }
+    const checks = [...document.querySelectorAll('.nid-check:checked')];
+    if (!checks.length) { Utils.toast('Selecione pelo menos uma OC ou Plano', 'error'); return; }
+
+    const btn = document.getElementById('btn-vincular-lote');
+    Utils.btnLoading(btn, true);
+
+    let ok = 0, erros = 0;
+    for (const cb of checks) {
+      const codigo = cb.dataset.codigo;
+      const tipo   = cb.dataset.tipo;
+      try {
+        await API.vincularAtualizar(tipo, codigo, evento);
+        if (tipo === 'oc') this._naoIdOCs = this._naoIdOCs.filter(x => x !== codigo);
+        else               this._naoIdPlanos = this._naoIdPlanos.filter(x => x !== codigo);
+        const id = btoa(unescape(encodeURIComponent(codigo))).replace(/[+=\/]/g,'_');
+        const el = document.getElementById('nid-' + id);
+        if (el) el.parentElement?.remove() || el.remove();
+        cb.closest('div')?.remove();
+        ok++;
+      } catch { erros++; }
+    }
+
+    Utils.toast(`✓ ${ok} vinculado${ok!==1?'s':''} a "${evento}"${erros?` · ${erros} erro(s)`:''}`, ok ? 'success' : 'error');
+    this._atualizarSelecao();
+    Utils.btnLoading(btn, false);
+
+    if (!this._naoIdOCs.length && !this._naoIdPlanos.length && !this._semCanal.length) {
+      document.getElementById('upload-nao-id').innerHTML = '';
+    }
   },
 
   async vincular(codigo, tipo) {
