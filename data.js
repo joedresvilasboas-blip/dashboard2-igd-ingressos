@@ -58,6 +58,7 @@ async function getVendedores() {
       nivel:    String(r[4]||'JUNIOR').trim().toUpperCase(),
       ativo:    String(r[5]||'').trim().toUpperCase() === 'SIM',
       dtInicio: String(r[6]||'').trim(),
+      perfil:   String(r[7]||'VENDEDOR').trim().toUpperCase(),
     }));
   set('vendedores', data);
   return data;

@@ -660,6 +660,7 @@ router.post('/get_semaforo', async (req, res) => {
 
     const vendedores = (await getVendedores()).filter(v => v.ativo);
     const resultado = vendedores.map(v => {
+      const isSupervisor = v.perfil === 'SUPERVISOR';
       const ultima = ultimaVenda[v.codigo];
       let diasSem = 0;
       if (!ultima) {
@@ -670,17 +671,20 @@ router.post('/get_semaforo', async (req, res) => {
         const strProximo = dUltima.toLocaleDateString('sv-SE');
         diasSem = strProximo > hojeS ? 0 : diasUteisEntre(strProximo, hojeS);
       }
-      const status = diasSem >= 4 ? 'vermelho' : diasSem >= 2 ? 'amarelo' : 'verde';
+      const status = isSupervisor ? 'supervisor' : (diasSem >= 4 ? 'vermelho' : diasSem >= 2 ? 'amarelo' : 'verde');
       return {
         codigo: v.codigo, nome: v.nome, apelido: v.apelido || v.nome,
-        equipe: v.equipe, nivel: v.nivel.toLowerCase(),
+        equipe: v.equipe, nivel: v.nivel.toLowerCase(), perfil: v.perfil || 'VENDEDOR',
         faturamento: Math.round((faturamentoMes[v.codigo]||0)*100)/100,
         ultimaVenda: ultima || '', diasSemVenda: diasSem, status,
       };
     });
 
     resultado.sort((a, b) => {
-      const ord = { vermelho:0, amarelo:1, verde:2 };
+      // Supervisores vão ao final da lista
+      if (a.status === 'supervisor' && b.status !== 'supervisor') return 1;
+      if (b.status === 'supervisor' && a.status !== 'supervisor') return -1;
+      const ord = { vermelho:0, amarelo:1, verde:2, supervisor:3 };
       if (ord[a.status] !== ord[b.status]) return ord[a.status] - ord[b.status];
       return b.diasSemVenda - a.diasSemVenda;
     });
@@ -760,12 +764,12 @@ router.post('/salvar_vendedor', async (req, res) => {
     const { escreverRange, adicionarLinhas } = require('./sheets');
     for (let i = 1; i < rows.length; i++) {
       if (String(rows[i][0]||'').trim() === String(b.codigo).trim()) {
-        await escreverRange(`${ABA.VENDEDORES}!A${i+1}:G${i+1}`, [[b.codigo, b.nome, b.apelido||'', b.equipe||'', (b.nivel||'JUNIOR').toUpperCase(), b.ativo ? 'SIM':'NAO', b.dtInicio||'']]);
+        await escreverRange(`${ABA.VENDEDORES}!A${i+1}:H${i+1}`, [[b.codigo, b.nome, b.apelido||'', b.equipe||'', (b.nivel||'JUNIOR').toUpperCase(), b.ativo ? 'SIM':'NAO', b.dtInicio||'', (b.perfil||'VENDEDOR').toUpperCase()]]);
         del('vendedores');
         return res.json({ ok:true, acao:'atualizado' });
       }
     }
-    await adicionarLinhas(ABA.VENDEDORES, [[b.codigo, b.nome, b.apelido||'', b.equipe||'', (b.nivel||'JUNIOR').toUpperCase(), b.ativo ? 'SIM':'NAO', b.dtInicio||'']]);
+    await adicionarLinhas(ABA.VENDEDORES, [[b.codigo, b.nome, b.apelido||'', b.equipe||'', (b.nivel||'JUNIOR').toUpperCase(), b.ativo ? 'SIM':'NAO', b.dtInicio||'', (b.perfil||'VENDEDOR').toUpperCase()]]);
     del('vendedores');
     res.json({ ok:true, acao:'inserido' });
   } catch(e) { res.json({ erro: e.message }); }
