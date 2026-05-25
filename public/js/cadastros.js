@@ -288,9 +288,217 @@ const CadVendedores = {
 
 // ===== CADASTRO DE EQUIPES =====
 const CadEquipes = {
+  dados:      [],   // lista de equipes [{nome, lider}]
+  vendedores: [],   // lista completa de vendedores (para contar membros)
+  _expandido: null, // nome da equipe com membros expandidos
+
   async abrir() {
-    Utils.toast('Em breve: Cadastro de Equipes', '');
-  }
+    const tela = document.getElementById('cadastros-content');
+    if (!tela) return;
+    tela.innerHTML = `
+      <div style="display:flex;flex-direction:column;height:100%">
+
+        <!-- HEADER -->
+        <div style="display:flex;align-items:center;gap:var(--s3);padding:var(--s4) var(--s5);
+          border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap">
+          <button class="btn btn-sm btn-secondary" onclick="Cadastros._voltarMenu()">← Voltar</button>
+          <div style="font-size:16px;font-weight:700;color:var(--text)">Equipes</div>
+          <div style="display:flex;gap:var(--s2);margin-left:auto">
+            <input type="text" id="eq-busca" class="input" placeholder="Buscar..."
+              style="width:140px" oninput="CadEquipes.renderLista()">
+            <button class="btn btn-sm btn-primary" onclick="CadEquipes.nova()">+ Nova</button>
+          </div>
+        </div>
+
+        <!-- FORMULÁRIO (oculto por padrão) -->
+        <div id="eq-form" style="display:none;padding:var(--s4) var(--s5);
+          border-bottom:1px solid var(--border);flex-shrink:0"></div>
+
+        <!-- LISTA -->
+        <div id="eq-lista" class="scroll-area" style="flex:1;padding:0 var(--s5)">
+          <div class="spinner" style="margin:20px auto"></div>
+        </div>
+
+      </div>`;
+    await this.carregar();
+  },
+
+  async carregar() {
+    const el = document.getElementById('eq-lista');
+    if (!el) return;
+    el.innerHTML = '<div class="spinner" style="margin:20px auto"></div>';
+    try {
+      const d = await API.getConfig();
+      this.dados      = (d.equipes    || []).sort((a, b) => a.nome.localeCompare(b.nome));
+      this.vendedores = (d.vendedores || []);
+      this.renderLista();
+    } catch {
+      el.innerHTML = '<div class="empty"><div class="empty-title">Erro ao carregar</div></div>';
+    }
+  },
+
+  renderLista() {
+    const el = document.getElementById('eq-lista');
+    if (!el) return;
+    const busca = (document.getElementById('eq-busca')?.value || '').toLowerCase();
+
+    const lista = this.dados.filter(e =>
+      !busca ||
+      e.nome.toLowerCase().includes(busca) ||
+      (e.lider || '').toLowerCase().includes(busca)
+    );
+
+    if (!lista.length) {
+      el.innerHTML = '<div class="empty"><div class="empty-title">Nenhuma equipe encontrada</div></div>';
+      return;
+    }
+
+    el.innerHTML = lista.map(e => {
+      const membros  = this.vendedores.filter(v => v.equipe === e.nome);
+      const ativos   = membros.filter(v => v.ativo);
+      const inativos = membros.filter(v => !v.ativo);
+      const expandido = this._expandido === e.nome;
+
+      const membrosHtml = expandido ? `
+        <div style="margin-top:var(--s3);padding-top:var(--s3);border-top:1px solid var(--border)">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+            color:var(--text-3);margin-bottom:var(--s2)">Membros (${membros.length})</div>
+          ${!membros.length
+            ? `<div style="font-size:12px;color:var(--text-3);font-style:italic">Nenhum vendedor nesta equipe.</div>`
+            : `<div style="display:flex;flex-direction:column;gap:4px">
+                ${ativos.map(v => `
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div class="avatar avatar-gold" style="width:26px;height:26px;font-size:9px;flex-shrink:0">${Utils.iniciais(v.apelido||v.nome)}</div>
+                    <div>
+                      <div style="font-size:12px;font-weight:600;color:var(--text)">${v.apelido||v.nome}</div>
+                      <div style="font-size:10px;color:var(--text-3)">${v.codigo}${v.nivel ? ' · ' + v.nivel : ''}</div>
+                    </div>
+                  </div>`).join('')}
+                ${inativos.map(v => `
+                  <div style="display:flex;align-items:center;gap:8px;opacity:.5">
+                    <div class="avatar" style="width:26px;height:26px;font-size:9px;flex-shrink:0;background:var(--bg-3);color:var(--text-3)">${Utils.iniciais(v.apelido||v.nome)}</div>
+                    <div>
+                      <div style="font-size:12px;color:var(--text-3)">${v.apelido||v.nome}</div>
+                      <div style="font-size:10px;color:var(--text-3)">${v.codigo} · Inativo</div>
+                    </div>
+                  </div>`).join('')}
+              </div>`
+          }
+        </div>` : '';
+
+      return `
+      <div class="list-item" style="flex-direction:column;align-items:stretch;padding:var(--s3) var(--s4)">
+        <div style="display:flex;align-items:center;gap:var(--s3)">
+
+          <!-- Avatar -->
+          <div class="avatar avatar-gold" style="font-size:14px;flex-shrink:0">🏆</div>
+
+          <!-- Dados principais -->
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:700;color:var(--text)">${e.nome}</div>
+            <div style="font-size:11px;color:var(--text-3)">
+              ${e.lider ? `👤 ${e.lider} · ` : ''}${membros.length} membro${membros.length !== 1 ? 's' : ''}
+              (${ativos.length} ativo${ativos.length !== 1 ? 's' : ''})
+            </div>
+            <!-- Edição inline do líder -->
+            <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+              <input type="text" value="${e.lider||''}" placeholder="Líder da equipe"
+                style="font-size:11px;padding:3px 8px;background:var(--bg-3);border:1px solid var(--border);
+                  border-radius:var(--r2);color:var(--text);width:170px"
+                title="Líder"
+                onchange="CadEquipes.salvarLider('${e.nome.replace(/'/g,"\\'")}', this.value)">
+            </div>
+          </div>
+
+          <!-- Ações -->
+          <div style="display:flex;gap:var(--s2);flex-shrink:0;align-items:center">
+            <button class="btn btn-sm btn-secondary"
+              onclick="CadEquipes._toggleMembros('${e.nome.replace(/'/g,"\\'")}')"
+              title="${expandido ? 'Ocultar membros' : 'Ver membros'}">
+              ${expandido ? '▲' : '▼'}
+            </button>
+            <button class="btn btn-sm btn-secondary"
+              onclick="CadEquipes.editar('${e.nome.replace(/'/g,"\\'")}')">✏️</button>
+          </div>
+
+        </div>
+        ${membrosHtml}
+      </div>`;
+    }).join('');
+  },
+
+  _toggleMembros(nome) {
+    this._expandido = this._expandido === nome ? null : nome;
+    this.renderLista();
+  },
+
+  nova() {
+    const f = document.getElementById('eq-form');
+    f.innerHTML = this._form({});
+    f.style.display = 'block';
+    document.getElementById('eq-f-nome')?.focus();
+  },
+
+  editar(nome) {
+    const eq = this.dados.find(e => e.nome === nome);
+    if (!eq) return;
+    const f = document.getElementById('eq-form');
+    f.innerHTML = this._form(eq);
+    f.style.display = 'block';
+    document.getElementById('eq-f-lider')?.focus();
+  },
+
+  _form(eq) {
+    const isNovo = !eq.nome;
+    return `
+      <div class="divider"></div>
+      <h4 style="margin-bottom:var(--s4)">${isNovo ? 'Nova Equipe' : 'Editar Equipe'}</h4>
+      <div class="input-group">
+        <label class="input-label">Nome da Equipe *
+          ${!isNovo ? '<span style="color:var(--text-3);font-weight:400">(chave — não pode ser alterado)</span>' : ''}
+        </label>
+        <input id="eq-f-nome" class="input" value="${eq.nome||''}"
+          placeholder="Ex: HUSKIES"
+          ${!isNovo ? 'readonly style="opacity:.6;text-transform:uppercase"' : 'style="text-transform:uppercase"'}>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Líder <span style="color:var(--text-3);font-weight:400">(opcional)</span></label>
+        <input id="eq-f-lider" class="input" value="${eq.lider||''}"
+          placeholder="Nome do líder da equipe">
+      </div>
+      <div style="display:flex;gap:var(--s2)">
+        <button class="btn btn-secondary" style="flex:1"
+          onclick="document.getElementById('eq-form').style.display='none'">Cancelar</button>
+        <button class="btn btn-primary" style="flex:1"
+          onclick="CadEquipes.salvar()">Salvar</button>
+      </div>`;
+  },
+
+  async salvar() {
+    const nome  = (document.getElementById('eq-f-nome')?.value  || '').trim().toUpperCase();
+    const lider = (document.getElementById('eq-f-lider')?.value || '').trim();
+    if (!nome) { Utils.toast('Nome é obrigatório', 'error'); return; }
+    try {
+      await API.salvarEquipe({ nome, lider });
+      Utils.toast('Equipe salva!', 'success');
+      document.getElementById('eq-form').style.display = 'none';
+      // Atualiza lista local sem novo fetch
+      const idx = this.dados.findIndex(e => e.nome === nome);
+      if (idx >= 0) this.dados[idx] = { nome, lider };
+      else { this.dados.push({ nome, lider }); this.dados.sort((a, b) => a.nome.localeCompare(b.nome)); }
+      this.renderLista();
+    } catch { Utils.toast('Erro ao salvar', 'error'); }
+  },
+
+  async salvarLider(nome, lider) {
+    const eq = this.dados.find(e => e.nome === nome);
+    if (!eq || eq.lider === lider.trim()) return;
+    eq.lider = lider.trim();
+    try {
+      await API.salvarEquipe({ nome, lider: eq.lider });
+      Utils.toast('Líder atualizado!', 'success');
+    } catch { Utils.toast('Erro ao salvar', 'error'); }
+  },
 };
 
 // ===== CADASTRO DE EVENTOS =====
