@@ -194,6 +194,10 @@ const CadVendedores = {
   },
 
   _form(v) {
+    const isSup = (v.perfil || 'VENDEDOR') === 'SUPERVISOR';
+    const custos = isSup
+      ? { junior: 'R$ 3.000', pleno: 'R$ 3.500', senior: 'R$ 4.000' }
+      : { junior: 'R$ 1.500', pleno: 'R$ 1.800', senior: 'R$ 2.200' };
     return `
       <div class="divider"></div>
       <h4 style="margin-bottom:var(--s4)">${v.codigo ? 'Editar' : 'Novo'} Vendedor</h4>
@@ -218,18 +222,36 @@ const CadVendedores = {
         <input id="f-dtinicio" class="input" type="date" value="${v.dtInicio||''}">
       </div>
       <div class="input-group">
+        <label class="input-label">Perfil <span style="color:var(--text-3);font-weight:400">(define função e custo)</span></label>
+        <select id="f-perfil" class="input" style="appearance:auto" onchange="CadVendedores._atualizarCustos(this.value)">
+          <option value="VENDEDOR"   ${(v.perfil||'VENDEDOR')==='VENDEDOR'   ?'selected':''}>Vendedor</option>
+          <option value="SUPERVISOR" ${v.perfil==='SUPERVISOR'?'selected':''}>Supervisor</option>
+        </select>
+      </div>
+      <div class="input-group">
         <label class="input-label">Nível <span style="color:var(--text-3);font-weight:400">(define custo fixo)</span></label>
         <select id="f-nivel" class="input" style="appearance:auto">
           <option value="" ${!v.nivel?'selected':''}>— Não definido —</option>
-          <option value="junior"  ${v.nivel==='junior' ?'selected':''}>Junior  — R$ 1.500</option>
-          <option value="pleno"   ${v.nivel==='pleno'  ?'selected':''}>Pleno   — R$ 1.800</option>
-          <option value="senior"  ${v.nivel==='senior' ?'selected':''}>Senior  — R$ 2.200</option>
+          <option value="JUNIOR"  id="opt-junior"  ${v.nivel==='JUNIOR' ?'selected':''}>${'Junior — ' + custos.junior}</option>
+          <option value="PLENO"   id="opt-pleno"   ${v.nivel==='PLENO'  ?'selected':''}>${'Pleno — '  + custos.pleno}</option>
+          <option value="SENIOR"  id="opt-senior"  ${v.nivel==='SENIOR' ?'selected':''}>${'Senior — ' + custos.senior}</option>
         </select>
       </div>
       <div class="flex gap-2">
         <button class="btn btn-secondary" style="flex:1" onclick="document.getElementById('cad-form').style.display='none'">Cancelar</button>
         <button class="btn btn-primary" style="flex:1" onclick="CadVendedores.salvar('${v.ativo !== undefined ? v.ativo : false}')">Salvar</button>
       </div>`;
+  },
+
+  _atualizarCustos(perfil) {
+    const isSup = perfil === 'SUPERVISOR';
+    const custos = isSup
+      ? { JUNIOR: 'Junior — R$ 3.000', PLENO: 'Pleno — R$ 3.500', SENIOR: 'Senior — R$ 4.000' }
+      : { JUNIOR: 'Junior — R$ 1.500', PLENO: 'Pleno — R$ 1.800', SENIOR: 'Senior — R$ 2.200' };
+    ['JUNIOR','PLENO','SENIOR'].forEach(n => {
+      const el = document.getElementById('opt-' + n.toLowerCase());
+      if (el) el.textContent = custos[n];
+    });
   },
 
   async salvar(ativoAtual) {
@@ -239,7 +261,8 @@ const CadVendedores = {
       apelido:  document.getElementById('f-apelido').value.trim(),
       equipe:   document.getElementById('f-equipe').value.trim(),
       dtInicio: document.getElementById('f-dtinicio').value,
-      nivel:    document.getElementById('f-nivel')?.value || '',
+      nivel:    (document.getElementById('f-nivel')?.value || '').toUpperCase(),
+      perfil:   document.getElementById('f-perfil')?.value || 'VENDEDOR',
       ativo:    ativoAtual === 'true' || ativoAtual === true,
     };
     if (!dados.codigo || !dados.nome) { Utils.toast('Preencha os campos obrigatórios', 'error'); return; }
@@ -353,11 +376,21 @@ const CadEquipes = {
       return;
     }
 
+    // Supervisores ativos para o select de líder
+    const supervisores = this.vendedores.filter(v => v.perfil === 'SUPERVISOR' && v.ativo);
+
     el.innerHTML = lista.map(e => {
       const membros  = this.vendedores.filter(v => v.equipe === e.nome);
-      const ativos   = membros.filter(v => v.ativo);
+      const supEq    = membros.filter(v => v.ativo && v.perfil === 'SUPERVISOR');
+      const ativos   = membros.filter(v => v.ativo && v.perfil !== 'SUPERVISOR');
       const inativos = membros.filter(v => !v.ativo);
       const expandido = this._expandido === e.nome;
+
+      const supOpts = supervisores.map(s => {
+        const label = s.equipe === e.nome ? `⭐ ${s.apelido||s.nome}` : `${s.apelido||s.nome} (${s.equipe||'sem equipe'})`;
+        const sel   = e.lider === (s.apelido||s.nome) || e.lider === s.nome;
+        return `<option value="${s.apelido||s.nome}" ${sel?'selected':''}>${label}</option>`;
+      }).join('');
 
       const membrosHtml = expandido ? `
         <div style="margin-top:var(--s3);padding-top:var(--s3);border-top:1px solid var(--border)">
@@ -366,6 +399,14 @@ const CadEquipes = {
           ${!membros.length
             ? `<div style="font-size:12px;color:var(--text-3);font-style:italic">Nenhum vendedor nesta equipe.</div>`
             : `<div style="display:flex;flex-direction:column;gap:4px">
+                ${supEq.map(v => `
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="font-size:18px;flex-shrink:0">⭐</div>
+                    <div>
+                      <div style="font-size:12px;font-weight:700;color:#f59e0b">${v.apelido||v.nome}</div>
+                      <div style="font-size:10px;color:var(--text-3)">${v.codigo} · Supervisor ${v.nivel||''}</div>
+                    </div>
+                  </div>`).join('')}
                 ${ativos.map(v => `
                   <div style="display:flex;align-items:center;gap:8px">
                     <div class="avatar avatar-gold" style="width:26px;height:26px;font-size:9px;flex-shrink:0">${Utils.iniciais(v.apelido||v.nome)}</div>
@@ -389,38 +430,31 @@ const CadEquipes = {
       return `
       <div class="list-item" style="flex-direction:column;align-items:stretch;padding:var(--s3) var(--s4)">
         <div style="display:flex;align-items:center;gap:var(--s3)">
-
-          <!-- Avatar -->
           <div class="avatar avatar-gold" style="font-size:14px;flex-shrink:0">🏆</div>
-
-          <!-- Dados principais -->
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:700;color:var(--text)">${e.nome}</div>
-            <div style="font-size:11px;color:var(--text-3)">
-              ${e.lider ? `👤 ${e.lider} · ` : ''}${membros.length} membro${membros.length !== 1 ? 's' : ''}
-              (${ativos.length} ativo${ativos.length !== 1 ? 's' : ''})
+            <div style="font-size:11px;color:var(--text-3);margin-bottom:4px">
+              ${supEq.length ? '⭐ ' + supEq.map(s=>s.apelido||s.nome).join(', ') + ' · ' : ''}${membros.length} membro${membros.length!==1?'s':''} (${ativos.length} vendedor${ativos.length!==1?'es':''})
             </div>
-            <!-- Edição inline do líder -->
-            <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
-              <input type="text" value="${e.lider||''}" placeholder="Líder da equipe"
-                style="font-size:11px;padding:3px 8px;background:var(--bg-3);border:1px solid var(--border);
-                  border-radius:var(--r2);color:var(--text);width:170px"
-                title="Líder"
-                onchange="CadEquipes.salvarLider('${e.nome.replace(/'/g,"\\'")}', this.value)">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:10px;color:var(--text-3)">Líder:</span>
+              ${supervisores.length
+                ? `<select style="font-size:11px;padding:3px 8px;background:var(--bg-3);border:1px solid var(--border);border-radius:var(--r2);color:var(--text);min-width:160px"
+                    onchange="CadEquipes.salvarLider('${e.nome.replace(/'/g,"\\'")}',this.value)">
+                    <option value="">— Nenhum —</option>${supOpts}
+                  </select>`
+                : `<input type="text" value="${e.lider||''}" placeholder="Nome do líder"
+                    style="font-size:11px;padding:3px 8px;background:var(--bg-3);border:1px solid var(--border);border-radius:var(--r2);color:var(--text);width:170px"
+                    onchange="CadEquipes.salvarLider('${e.nome.replace(/'/g,"\\'")}',this.value)">`
+              }
             </div>
           </div>
-
-          <!-- Ações -->
           <div style="display:flex;gap:var(--s2);flex-shrink:0;align-items:center">
-            <button class="btn btn-sm btn-secondary"
-              onclick="CadEquipes._toggleMembros('${e.nome.replace(/'/g,"\\'")}')"
-              title="${expandido ? 'Ocultar membros' : 'Ver membros'}">
+            <button class="btn btn-sm btn-secondary" onclick="CadEquipes._toggleMembros('${e.nome.replace(/'/g,"\\'")}')">
               ${expandido ? '▲' : '▼'}
             </button>
-            <button class="btn btn-sm btn-secondary"
-              onclick="CadEquipes.editar('${e.nome.replace(/'/g,"\\'")}')">✏️</button>
+            <button class="btn btn-sm btn-secondary" onclick="CadEquipes.editar('${e.nome.replace(/'/g,"\\'")}')">✏️</button>
           </div>
-
         </div>
         ${membrosHtml}
       </div>`;

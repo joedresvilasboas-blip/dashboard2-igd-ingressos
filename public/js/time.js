@@ -184,11 +184,12 @@ const Time = {
       const equipesMap = {};
       semaforo.forEach(v => {
         const eq = v.equipe || 'Sem equipe';
-        if (!equipesMap[eq]) equipesMap[eq] = { nome: eq, vendedores: [], hc: 0, vendas: 0, fat: 0, verde: 0, amarelo: 0, vermelho: 0 };
+        if (!equipesMap[eq]) equipesMap[eq] = { nome: eq, vendedores: [], hc: 0, vendas: 0, fat: 0, verde: 0, amarelo: 0, vermelho: 0, supervisores: 0 };
         equipesMap[eq].vendedores.push(v);
-        if (v.status === 'verde')    equipesMap[eq].verde++;
-        if (v.status === 'amarelo')  equipesMap[eq].amarelo++;
-        if (v.status === 'vermelho') equipesMap[eq].vermelho++;
+        if (v.status === 'verde')      equipesMap[eq].verde++;
+        if (v.status === 'amarelo')    equipesMap[eq].amarelo++;
+        if (v.status === 'vermelho')   equipesMap[eq].vermelho++;
+        if (v.status === 'supervisor') equipesMap[eq].supervisores++;
       });
 
       ranking.forEach(v => {
@@ -283,7 +284,7 @@ const Time = {
         ${this._card('FATURAMENTO', 'R$ ' + totalFat.toLocaleString('pt-BR',{minimumFractionDigits:2}), totalVend + ' vendas', '#4caf50')}
         ${this._card('META HC', metaPct + '%', totalHC + ' / ' + metaHC, metaPct >= 100 ? '#4caf50' : metaPct >= 60 ? '#ff9800' : '#e85d5d')}
         ${this._card('SEMANA', semAtual.num ? 'Sem ' + semAtual.num : '—', semAtual.label || 'atual', 'var(--text-3)')}
-        ${this._card('VENDEDORES ATIVOS', semaforoFiltrado.filter(v => v.status !== 'vermelho').length, 'de ' + semaforoFiltrado.length + ' no time', '#4caf50')}
+        ${this._card('VENDEDORES ATIVOS', semaforoFiltrado.filter(v => v.status !== 'vermelho' && v.status !== 'supervisor').length, 'de ' + semaforoFiltrado.filter(v => v.status !== 'supervisor').length + ' no time', '#4caf50')}
       </div>
 
       <!-- CARDS DE EQUIPE -->
@@ -303,7 +304,8 @@ const Time = {
         </div>
         ${rankingFiltrado.slice(0,20).map((v, i) => {
           const vend  = semaforo.find(s => s.codigo === v.codigo);
-          const cor   = { verde:'#4ade80', amarelo:'#fbbf24', vermelho:'#f87171' }[vend?.status||'vermelho'];
+          const isSup = vend?.perfil === 'SUPERVISOR' || vend?.status === 'supervisor';
+          const cor   = isSup ? '#f59e0b' : ({ verde:'#4ade80', amarelo:'#fbbf24', vermelho:'#f87171' }[vend?.status||'vermelho']);
           const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1);
           return `
             <div onclick="Vendedor.abrir('${v.codigo}')" style="display:grid;grid-template-columns:32px 1fr 80px 70px 100px 70px;gap:8px;
@@ -378,7 +380,7 @@ const Time = {
         </div>
 
         <!-- Semáforo mini -->
-        <div style="display:flex;gap:4px;justify-content:center">
+        <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap">
           <div style="display:flex;align-items:center;gap:3px;font-size:10px;color:#4ade80">
             <div style="width:6px;height:6px;border-radius:50%;background:#4ade80"></div>${eq.verde}
           </div>
@@ -388,6 +390,7 @@ const Time = {
           <div style="display:flex;align-items:center;gap:3px;font-size:10px;color:#f87171">
             <div style="width:6px;height:6px;border-radius:50%;background:#f87171"></div>${eq.vermelho}
           </div>
+          ${eq.supervisores > 0 ? `<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:#f59e0b">⭐${eq.supervisores}</div>` : ''}
         </div>
       </div>`;
   },
@@ -444,9 +447,10 @@ const Time = {
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3);margin-bottom:var(--s3)">Vendedores</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--s3);margin-bottom:var(--s4)">
         ${semaforoEq.map(v => {
+          const isSup = v.status === 'supervisor';
           const rv   = rankingEq.find(r => r.codigo === v.codigo) || {};
-          const cor  = { verde:'#4ade80', amarelo:'#fbbf24', vermelho:'#f87171' }[v.status] || '#f87171';
-          const bg   = { verde:'rgba(74,222,128,.06)', amarelo:'rgba(251,191,36,.06)', vermelho:'rgba(248,113,113,.06)' }[v.status] || '';
+          const cor  = isSup ? '#f59e0b' : ({ verde:'#4ade80', amarelo:'#fbbf24', vermelho:'#f87171' }[v.status] || '#f87171');
+          const bg   = isSup ? 'rgba(245,158,11,.06)' : ({ verde:'rgba(74,222,128,.06)', amarelo:'rgba(251,191,36,.06)', vermelho:'rgba(248,113,113,.06)' }[v.status] || '');
           let dias = v.diasSemVenda || 0;
           if (v.ultimaVenda) {
             const hoje  = new Date(); hoje.setHours(0,0,0,0);
@@ -467,15 +471,19 @@ const Time = {
                 style="padding:var(--s4);cursor:pointer;display:flex;flex-direction:column;gap:var(--s3)">
                 <div style="display:flex;align-items:center;gap:10px">
                   <div style="width:36px;height:36px;border-radius:50%;background:${cor}22;border:2px solid ${cor}66;
-                    display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${cor};flex-shrink:0">
-                    ${iniciais}
+                    display:flex;align-items:center;justify-content:center;font-size:${isSup?'18px':'13px'};font-weight:700;color:${cor};flex-shrink:0">
+                    ${isSup ? '⭐' : iniciais}
                   </div>
                   <div style="flex:1;min-width:0">
                     <div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.apelido||v.nome}</div>
-                    <div style="font-size:10px;color:var(--text-3)">${v.nivel||'JUNIOR'} · ${v.codigo}</div>
+                    <div style="font-size:10px;color:${isSup?'#f59e0b':'var(--text-3)'}">
+                      ${isSup ? '⭐ Supervisor' : (v.nivel||'JUNIOR')} · ${v.codigo}
+                    </div>
                   </div>
                   <div style="display:flex;align-items:center;gap:8px">
-                    <div style="width:8px;height:8px;border-radius:50%;background:${cor};box-shadow:0 0 6px ${cor}"></div>
+                    ${isSup
+                      ? `<div style="font-size:10px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.15);padding:2px 7px;border-radius:10px">SUP</div>`
+                      : `<div style="width:8px;height:8px;border-radius:50%;background:${cor};box-shadow:0 0 6px ${cor}"></div>`}
                     <div style="font-size:14px;color:var(--text-3);transition:transform .2s;transform:${expandido?'rotate(180deg)':'rotate(0deg)'}" id="chevron-${v.codigo}">▾</div>
                   </div>
                 </div>
@@ -494,7 +502,7 @@ const Time = {
                   </div>
                 </div>
                 <div style="font-size:11px;font-weight:600;color:${cor};text-align:center">
-                  ${dias === 0 ? '✓ Vendeu hoje' : dias + 'd sem venda'}
+                  ${isSup ? '⭐ Supervisor' : (dias === 0 ? '✓ Vendeu hoje' : dias + 'd sem venda')}
                 </div>
               </div>
               <!-- Conteúdo expandido -->
@@ -580,7 +588,10 @@ const Time = {
 
           <!-- ROI compacto -->
           ${(() => {
-            const fixos = { junior:1500, pleno:1800, senior:2200 };
+            const isSup = (v.perfil||'').toUpperCase() === 'SUPERVISOR';
+            const fixos = isSup
+              ? { junior:3000, pleno:3500, senior:4000 }
+              : { junior:1500, pleno:1800, senior:2200 };
             const fixo  = fixos[(v.nivel||'junior').toLowerCase()];
             if (!fixo || !tGeral.faturamento) return '';
             const comissao   = tGeral.faturamento * 0.25;
@@ -614,10 +625,10 @@ const Time = {
     const eq = this._filtroEquipe;
     const lista = eq === 'todas' ? semaforo : semaforo.filter(v => v.equipe === eq);
 
-    const cores  = { verde:'#4ade80', amarelo:'#fbbf24', vermelho:'#f87171' };
-    const labels = { verde:'Em dia', amarelo:'Atenção', vermelho:'Risco' };
+    const cores  = { verde:'#4ade80', amarelo:'#fbbf24', vermelho:'#f87171', supervisor:'#f59e0b' };
+    const labels = { verde:'Em dia', amarelo:'Atenção', vermelho:'Risco', supervisor:'Supervisor' };
     const resumo = { verde:0, amarelo:0, vermelho:0 };
-    lista.forEach(v => resumo[v.status]++);
+    lista.forEach(v => { if (v.status !== 'supervisor') resumo[v.status]++; });
 
     el.innerHTML = `
       <!-- Resumo semáforo -->
@@ -636,7 +647,8 @@ const Time = {
       <!-- Lista vendedores -->
       <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r3);overflow:hidden;margin-bottom:var(--s4)">
         ${lista.map(v => {
-          const cor = cores[v.status];
+          const isSup = v.status === 'supervisor';
+          const cor   = cores[v.status] || '#f87171';
           let dias = v.diasSemVenda || 0;
           if (v.ultimaVenda) {
             const hoje  = new Date(); hoje.setHours(0,0,0,0);
@@ -647,13 +659,15 @@ const Time = {
             <div onclick="Vendedor.abrir('${v.codigo}')" style="display:flex;align-items:center;gap:12px;padding:11px 14px;
               border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s"
               onmouseenter="this.style.background='var(--bg-3)'" onmouseleave="this.style.background=''">
-              <div style="width:10px;height:10px;border-radius:50%;background:${cor};box-shadow:0 0 6px ${cor}88;flex-shrink:0"></div>
+              ${isSup
+                ? `<div style="font-size:14px;flex-shrink:0">⭐</div>`
+                : `<div style="width:10px;height:10px;border-radius:50%;background:${cor};box-shadow:0 0 6px ${cor}88;flex-shrink:0"></div>`}
               <div style="flex:1;min-width:0">
                 <div style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.apelido||v.nome}</div>
-                <div style="font-size:10px;color:var(--text-3)">${v.equipe||'—'} · ${v.nivel||''}</div>
+                <div style="font-size:10px;color:var(--text-3)">${v.equipe||'—'} · ${isSup ? 'Supervisor' : v.nivel||''}</div>
               </div>
               <div style="text-align:right;flex-shrink:0">
-                <div style="font-size:12px;font-weight:600;color:${cor}">${dias === 0 ? 'Vendeu hoje' : dias + 'd sem venda'}</div>
+                <div style="font-size:12px;font-weight:600;color:${cor}">${isSup ? 'Supervisor' : (dias === 0 ? 'Vendeu hoje' : dias + 'd sem venda')}</div>
                 <div style="font-size:10px;color:var(--text-3)">${v.ultimaVenda ? v.ultimaVenda.split('-').reverse().join('/') : 'Sem vendas'}</div>
               </div>
               <div style="color:var(--text-3);font-size:14px">›</div>
