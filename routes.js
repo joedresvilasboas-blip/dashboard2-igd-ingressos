@@ -978,7 +978,7 @@ router.post('/upload_csv', async (req, res) => {
       const canalMacro = ocInfo.canalMacro || inferido.canalMacro;
       // Registra OC/Plano sem cadastro
       if (oc    && !mapaOC[oc])                           ocsNaoId.add(oc);
-      if (plano && !ocInfo.canal && !inferido.canal)       planosNaoId.add(plano);
+      if (plano && !ocInfo.eventoCod && !ocsNaoId.has(oc)) planosNaoId.add(plano);
       if (!canal && (oc || plano))                         semCanal.add(oc || plano);
       const evCod    = ocInfo.eventoCod  || '';
       const evInfo   = mapaEvento[evCod] || {};
