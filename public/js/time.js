@@ -551,6 +551,11 @@ const Time = {
     try {
       const d = await API.getPerfilVendedor(codigo);
       const v   = d.vendedor || {};
+      // Enriquece com perfil/nivel do semaforo (getPerfilVendedor não retorna perfil)
+      const sEntry = (Time._dados?.semaforo || []).find(s => s.codigo === codigo);
+      if (sEntry?.perfil && !v.perfil) v.perfil = sEntry.perfil;
+      if (sEntry?.nivel  && !v.nivel)  v.nivel  = sEntry.nivel;
+      if (sEntry?.status && !v.status) v.status = sEntry.status;
       const ps  = d.porSemana || [];
       const cfg = Time._config || {};
       const cal = (cfg.semanas || []);
