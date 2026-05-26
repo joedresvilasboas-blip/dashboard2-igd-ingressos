@@ -393,15 +393,20 @@ const CadEquipes = {
       }).join('');
 
 
-      // Vendedores disponíveis para adicionar (ativos fora dessa equipe)
-      const disponiveis = this.vendedores.filter(v => v.ativo && v.equipe !== e.nome);
-      const dispOpts = disponiveis
-        .sort((a, b) => (a.apelido||a.nome).localeCompare(b.apelido||b.nome))
-        .map(v => {
-          const prefix = v.perfil === 'SUPERVISOR' ? '⭐ ' : '';
-          const suffix = v.equipe ? ` (${v.equipe})` : ' (sem equipe)';
-          return `<option value="${v.codigo}">${prefix}${v.apelido||v.nome}${suffix}</option>`;
-        }).join('');
+      // Vendedores disponíveis para adicionar (todos fora dessa equipe, ativos e inativos)
+      const disponiveis = this.vendedores.filter(v => v.equipe !== e.nome);
+      const dispAtivos   = disponiveis.filter(v => v.ativo).sort((a,b) => (a.apelido||a.nome).localeCompare(b.apelido||b.nome));
+      const dispInativos = disponiveis.filter(v => !v.ativo).sort((a,b) => (a.apelido||a.nome).localeCompare(b.apelido||b.nome));
+      const toOpt = (v, inativo) => {
+        const prefix  = v.perfil === 'SUPERVISOR' ? '⭐ ' : '';
+        const sufixEq = v.equipe ? ` (${v.equipe})` : ' (sem equipe)';
+        const sufixAt = inativo ? ' — Inativo' : '';
+        return `<option value="${v.codigo}">${prefix}${v.apelido||v.nome}${sufixEq}${sufixAt}</option>`;
+      };
+      const dispOpts = [
+        dispAtivos.length   ? `<optgroup label="Ativos">${dispAtivos.map(v => toOpt(v,false)).join('')}</optgroup>`   : '',
+        dispInativos.length ? `<optgroup label="Inativos">${dispInativos.map(v => toOpt(v,true)).join('')}</optgroup>` : '',
+      ].join('');
 
       const membrosHtml = expandido ? `
         <div style="margin-top:var(--s3);padding-top:var(--s3);border-top:1px solid var(--border)">
