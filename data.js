@@ -57,8 +57,7 @@ async function getVendedores() {
       equipe:   String(r[3]||'').trim(),
       nivel:    String(r[4]||'JUNIOR').trim().toUpperCase(),
       ativo:    String(r[5]||'').trim().toUpperCase() === 'SIM',
-      dtInicio: String(r[6]||'').trim(),
-      perfil:   String(r[7]||'VENDEDOR').trim().toUpperCase(),
+      dtInicio: toDateStr(String(r[6]||'').trim()),
     }));
   set('vendedores', data);
   return data;
