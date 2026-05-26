@@ -218,6 +218,7 @@ const Time = {
         semAtual,
         strIni, strFim,
       };
+      Time._dados = this._dados; // referência estática para IIFEs em template literals
 
       // Renderiza filtros de equipe
       const equipes = ['todas', ...Object.keys(equipesMap).sort()];
@@ -612,13 +613,42 @@ const Time = {
             const fixos = isSup
               ? { junior:3000, pleno:3500, senior:4000 }
               : { junior:1500, pleno:1800, senior:2200 };
-            const fixo  = fixos[(v.nivel||'junior').toLowerCase()];
-            if (!fixo || !tGeral.faturamento) return '';
-            const comissao   = tGeral.faturamento * 0.25;
-            const total      = fixo + comissao;
+            const fixo = fixos[(v.nivel||'junior').toLowerCase()];
+            if (!fixo) return '';
+
+            const fatProprio = tGeral.faturamento || 0;
+            const comissaoDireta = fatProprio * 0.25;
+
+            if (isSup) {
+              // Faturamento total do time do supervisor
+              const equipeNome = v.equipe || '';
+              const eqDados = (Time._dados?.equipes || []).find(e => e.nome === equipeNome);
+              const fatEquipe = eqDados?.fat || 0;
+              const bonusEquipe = fatEquipe * 0.05;
+              const total = fixo + comissaoDireta + bonusEquipe;
+              const custoTotal = fixo + comissaoDireta + bonusEquipe;
+              const roi = fatProprio ? Math.round((fatProprio - custoTotal) / custoTotal * 100) : null;
+              const cor = roi !== null ? (roi >= 0 ? '#4caf50' : '#e85d5d') : 'var(--text-3)';
+              return '<div style="margin:8px 0 4px">' +
+                '<div style="font-size:10px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">⭐ Remuneração Supervisor</div>' +
+                linha('Fixo', 'R$ ' + fixo.toLocaleString('pt-BR')) +
+                linha('Comissão direta (25%)', 'R$ ' + comissaoDireta.toLocaleString('pt-BR',{minimumFractionDigits:2})) +
+                linha('Bônus equipe (5% fat. time)', 'R$ ' + bonusEquipe.toLocaleString('pt-BR',{minimumFractionDigits:2}), '#f59e0b') +
+                `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);background:var(--bg-3);margin:2px -14px;padding-left:14px;padding-right:14px">
+                  <span style="font-size:11px;font-weight:700;color:var(--text)">Total Recebimento</span>
+                  <span style="font-size:11px;font-weight:700;color:#4caf50">R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
+                </div>` +
+                (roi !== null ? linha('ROI (vendas próprias)', roi + '%', cor) : '') +
+              '</div>';
+            }
+
+            // Vendedor normal
+            const comissao = comissaoDireta;
+            const total = fixo + comissao;
             const custoTotal = fixo + comissao;
-            const roi        = Math.round((tGeral.faturamento - custoTotal) / custoTotal * 100);
-            const cor        = roi >= 0 ? '#4caf50' : '#e85d5d';
+            const roi = Math.round((fatProprio - custoTotal) / custoTotal * 100);
+            const cor = roi >= 0 ? '#4caf50' : '#e85d5d';
+            if (!fatProprio) return '';
             return '<div style="margin:8px 0 4px">' +
               linha('Fixo', 'R$ ' + fixo.toLocaleString('pt-BR')) +
               linha('Comissão', 'R$ ' + comissao.toLocaleString('pt-BR',{minimumFractionDigits:2})) +
