@@ -165,7 +165,7 @@ const Upload = {
       if (temProblemas) {
         try {
           const [cfg, regras] = await Promise.all([API.getConfig(), API.getRegrасCanal()]);
-          this._eventos = (cfg.eventos || []).map(e => e.nome).sort();
+          this._eventos = (cfg.eventos || []).sort((a, b) => a.nome.localeCompare(b.nome));
           this._canais  = [...new Set((regras.regras || []).map(r => r.canal))].sort();
         } catch { this._eventos = []; this._canais = []; }
         this._renderNaoId();
@@ -191,7 +191,7 @@ const Upload = {
     }
 
     const optsEvento = this._eventos.map(e =>
-      `<option value="${e}">${e}</option>`
+      `<option value="${e.codigo}">${e.nome}</option>`
     ).join('');
 
     // Item de OC/Plano com checkbox para seleção múltipla
