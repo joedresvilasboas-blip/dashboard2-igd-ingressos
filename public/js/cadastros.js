@@ -392,39 +392,71 @@ const CadEquipes = {
         return `<option value="${s.apelido||s.nome}" ${sel?'selected':''}>${label}</option>`;
       }).join('');
 
+
+      // Vendedores disponíveis para adicionar (ativos fora dessa equipe)
+      const disponiveis = this.vendedores.filter(v => v.ativo && v.equipe !== e.nome);
+      const dispOpts = disponiveis
+        .sort((a, b) => (a.apelido||a.nome).localeCompare(b.apelido||b.nome))
+        .map(v => {
+          const prefix = v.perfil === 'SUPERVISOR' ? '⭐ ' : '';
+          const suffix = v.equipe ? ` (${v.equipe})` : ' (sem equipe)';
+          return `<option value="${v.codigo}">${prefix}${v.apelido||v.nome}${suffix}</option>`;
+        }).join('');
+
       const membrosHtml = expandido ? `
         <div style="margin-top:var(--s3);padding-top:var(--s3);border-top:1px solid var(--border)">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
-            color:var(--text-3);margin-bottom:var(--s2)">Membros (${membros.length})</div>
-          ${!membros.length
-            ? `<div style="font-size:12px;color:var(--text-3);font-style:italic">Nenhum vendedor nesta equipe.</div>`
-            : `<div style="display:flex;flex-direction:column;gap:4px">
-                ${supEq.map(v => `
-                  <div style="display:flex;align-items:center;gap:8px">
-                    <div style="font-size:18px;flex-shrink:0">⭐</div>
-                    <div>
-                      <div style="font-size:12px;font-weight:700;color:#f59e0b">${v.apelido||v.nome}</div>
-                      <div style="font-size:10px;color:var(--text-3)">${v.codigo} · Supervisor ${v.nivel||''}</div>
-                    </div>
-                  </div>`).join('')}
-                ${ativos.map(v => `
-                  <div style="display:flex;align-items:center;gap:8px">
-                    <div class="avatar avatar-gold" style="width:26px;height:26px;font-size:9px;flex-shrink:0">${Utils.iniciais(v.apelido||v.nome)}</div>
-                    <div>
-                      <div style="font-size:12px;font-weight:600;color:var(--text)">${v.apelido||v.nome}</div>
-                      <div style="font-size:10px;color:var(--text-3)">${v.codigo}${v.nivel ? ' · ' + v.nivel : ''}</div>
-                    </div>
-                  </div>`).join('')}
-                ${inativos.map(v => `
-                  <div style="display:flex;align-items:center;gap:8px;opacity:.5">
-                    <div class="avatar" style="width:26px;height:26px;font-size:9px;flex-shrink:0;background:var(--bg-3);color:var(--text-3)">${Utils.iniciais(v.apelido||v.nome)}</div>
-                    <div>
-                      <div style="font-size:12px;color:var(--text-3)">${v.apelido||v.nome}</div>
-                      <div style="font-size:10px;color:var(--text-3)">${v.codigo} · Inativo</div>
-                    </div>
-                  </div>`).join('')}
-              </div>`
-          }
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--s3)">
+            Membros (${membros.length})
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:var(--s3)">
+            ${!membros.length
+              ? `<div style="font-size:12px;color:var(--text-3);font-style:italic;padding:var(--s2) 0">Nenhum membro ainda.</div>`
+              : [
+                  ...supEq.map(v => `
+                    <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:var(--r2);background:rgba(245,158,11,.06)">
+                      <div style="font-size:16px;flex-shrink:0">⭐</div>
+                      <div style="flex:1;min-width:0">
+                        <div style="font-size:12px;font-weight:700;color:#f59e0b">${v.apelido||v.nome}</div>
+                        <div style="font-size:10px;color:var(--text-3)">${v.codigo} · Supervisor ${v.nivel||''}</div>
+                      </div>
+                      <button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:#f87171;border-radius:var(--r2)"
+                        onclick="CadEquipes.removerMembro('${v.codigo.replace(/'/g,"\\'")}','${e.nome.replace(/'/g,"\\'")}')">Remover</button>
+                    </div>`),
+                  ...ativos.map(v => `
+                    <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:var(--r2)">
+                      <div class="avatar avatar-gold" style="width:26px;height:26px;font-size:9px;flex-shrink:0">${Utils.iniciais(v.apelido||v.nome)}</div>
+                      <div style="flex:1;min-width:0">
+                        <div style="font-size:12px;font-weight:600;color:var(--text)">${v.apelido||v.nome}</div>
+                        <div style="font-size:10px;color:var(--text-3)">${v.codigo}${v.nivel ? ' · ' + v.nivel : ''}</div>
+                      </div>
+                      <button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:#f87171;border-radius:var(--r2)"
+                        onclick="CadEquipes.removerMembro('${v.codigo.replace(/'/g,"\\'")}','${e.nome.replace(/'/g,"\\'")}')">Remover</button>
+                    </div>`),
+                  ...inativos.map(v => `
+                    <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:var(--r2);opacity:.5">
+                      <div class="avatar" style="width:26px;height:26px;font-size:9px;flex-shrink:0;background:var(--bg-3);color:var(--text-3)">${Utils.iniciais(v.apelido||v.nome)}</div>
+                      <div style="flex:1;min-width:0">
+                        <div style="font-size:12px;color:var(--text-3)">${v.apelido||v.nome}</div>
+                        <div style="font-size:10px;color:var(--text-3)">${v.codigo} · Inativo</div>
+                      </div>
+                      <button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:#f87171;border-radius:var(--r2)"
+                        onclick="CadEquipes.removerMembro('${v.codigo.replace(/'/g,"\\'")}','${e.nome.replace(/'/g,"\\'")}')">Remover</button>
+                    </div>`)
+                ].join('')
+            }
+          </div>
+          ${disponiveis.length ? `
+          <div style="display:flex;gap:var(--s2);align-items:center;padding-top:var(--s3);border-top:1px solid var(--border)">
+            <select id="add-vend-${e.nome.replace(/\s/g,'_').replace(/'/g,'')}" class="input" style="appearance:auto;flex:1;font-size:12px;padding:5px 8px">
+              <option value="">Selecionar vendedor...</option>
+              ${dispOpts}
+            </select>
+            <button class="btn btn-sm btn-primary"
+              onclick="CadEquipes.adicionarMembro('add-vend-${e.nome.replace(/\s/g,'_').replace(/'/g,'')}','${e.nome.replace(/'/g,"\\'")}')">+ Adicionar</button>
+          </div>` : `
+          <div style="padding-top:var(--s3);border-top:1px solid var(--border);font-size:11px;color:var(--text-3);font-style:italic">
+            Todos os vendedores ativos já estão nesta equipe.
+          </div>`}
         </div>` : '';
 
       return `
@@ -546,6 +578,39 @@ const CadEquipes = {
       await API.salvarEquipe({ nome, lider: eq.lider });
       Utils.toast('Líder atualizado!', 'success');
     } catch { Utils.toast('Erro ao salvar', 'error'); }
+  },
+
+  async adicionarMembro(selectId, nomeEquipe) {
+    const sel = document.getElementById(selectId);
+    const codigo = sel?.value;
+    if (!codigo) { Utils.toast('Selecione um vendedor', 'error'); return; }
+    const v = this.vendedores.find(x => x.codigo === codigo);
+    if (!v) return;
+    const equipeAnterior = v.equipe;
+    v.equipe = nomeEquipe;
+    try {
+      await API.salvarVendedor({ ...v });
+      Utils.toast(`${v.apelido||v.nome} adicionado à equipe!`, 'success');
+      this.renderLista();
+    } catch {
+      v.equipe = equipeAnterior; // reverte em caso de erro
+      Utils.toast('Erro ao salvar', 'error');
+    }
+  },
+
+  async removerMembro(codigo, nomeEquipe) {
+    const v = this.vendedores.find(x => x.codigo === codigo);
+    if (!v) return;
+    const equipeAnterior = v.equipe;
+    v.equipe = '';
+    try {
+      await API.salvarVendedor({ ...v });
+      Utils.toast(`${v.apelido||v.nome} removido da equipe.`, 'success');
+      this.renderLista();
+    } catch {
+      v.equipe = equipeAnterior;
+      Utils.toast('Erro ao salvar', 'error');
+    }
   },
 };
 
