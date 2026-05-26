@@ -153,23 +153,31 @@ const Time = {
     const hojeS = cfg.hojeStr  || '';
     const semAtual = sems.find(s => hojeS >= s.strIni && hojeS <= s.strFim) || sems[sems.length-1] || {};
 
-    // Usa filtros se definidos, senão usa semana atual
-    const strIni = this._filtros._strIni || semAtual.strIni || '';
-    const strFim = this._filtros._strFim || semAtual.strFim || '';
-    const canal  = this._filtros.canal  || '';
-    const evento = this._filtros.evento || '';
-    const status = this._filtros.status || '';
+    // Usa filtros de data explícitos; se não, resolve pelo filtro de mês/semana; senão usa semana atual
+    let strIni = this._filtros._strIni || semAtual.strIni || '';
+    let strFim = this._filtros._strFim || semAtual.strFim || '';
+
+    const canal  = this._filtros.canal     || [];
+    const evento = this._filtros.evento    || [];
+    const status = this._filtros.status    || [];
+    const mes    = this._filtros.mes       || [];
+    const semana = this._filtros.semana    || [];
+
+    // Resolve datas a partir do filtro de mês ou semana (igual ao que o backend faz)
+    if (semana.length) {
+      const nums = semana.map(v => String(v).replace('Sem ','').trim());
+      const semsF = sems.filter(s => nums.includes(String(s.num)));
+      if (semsF.length) { strIni = semsF[0].strIni; strFim = semsF[semsF.length-1].strFim; }
+    } else if (mes.length) {
+      const semsM = sems.filter(s => mes.includes(s.mes));
+      if (semsM.length) { strIni = semsM[0].strIni; strFim = semsM[semsM.length-1].strFim; }
+    }
 
     const el = document.getElementById('time-main');
     if (el) el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:200px"><div class="spinner"></div></div>';
 
     try {
-      const canal     = this._filtros.canal     || [];
-      const evento    = this._filtros.evento    || [];
-      const status    = this._filtros.status    || [];
       const categoria = this._filtros.categoria || [];
-      const mes       = this._filtros.mes       || [];
-      const semana    = this._filtros.semana    || [];
 
       const [semaforoRes, metaRes, rankingRes] = await Promise.all([
         API.getSemaforo({}),
