@@ -1240,7 +1240,7 @@ router.post('/get_perfil_vendedor', async (req, res) => {
 
     res.json({
       ok:true,
-      vendedor: { codigo:vend.codigo, nome:vend.nome, apelido:vend.apelido||vend.nome, equipe:vend.equipe, dtInicio:vend.dtInicio, nivel:vend.nivel.toLowerCase() },
+      vendedor: { codigo:vend.codigo, nome:vend.nome, apelido:vend.apelido||vend.nome, equipe:vend.equipe, dtInicio:vend.dtInicio, nivel:vend.nivel.toLowerCase(), perfil:vend.perfil||'VENDEDOR' },
       periodo:  { strIni, strFim, semanas:sems.length },
       totais:   { hc:totHC, va:totVA, rc:totRC, upgrade:totUpg, cancelados:totCanc, pontos:totPts, faturamento:Math.round(totFat*100)/100, _semanas:sems.length, horas:'0h 00min', atend:0, entrv:0, diasAtivos:0, txAtend:0, txEntrv:0, hcPorHora:0, pace:'—' },
       porSemana,
