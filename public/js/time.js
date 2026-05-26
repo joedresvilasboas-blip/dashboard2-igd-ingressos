@@ -556,9 +556,21 @@ const Time = {
       const hojeS = cfg.hojeStr || '';
       const semAtual = cal.find(s => hojeS >= s.strIni && hojeS <= s.strFim) || cal[cal.length-1] || {};
 
-      const tGeral = Vendedor._agregarTotais(ps);
+      // Filtra semanas pelo período ativo (filtro de mês/semana/data)
+      const strIni = this._dados?.strIni || semAtual.strIni || '';
+      const strFim = this._dados?.strFim || semAtual.strFim || '';
+      const psFiltrado = (strIni && strFim)
+        ? ps.filter(s => s.strFim >= strIni && s.strIni <= strFim)
+        : ps;
+
+      const tGeral = Vendedor._agregarTotais(psFiltrado.length ? psFiltrado : ps);
       // Usa totais gerais para exibição (mais completo)
       const t = tGeral;
+
+      // Label do período exibido
+      const periodoLabel = (strIni && strFim && (strIni !== semAtual.strIni || strFim !== semAtual.strFim))
+        ? strIni.split('-').reverse().join('/') + ' à ' + strFim.split('-').reverse().join('/')
+        : 'Semana Atual · ' + (semAtual.strIni||'').split('-').reverse().join('/') + ' à ' + (semAtual.strFim||'').split('-').reverse().join('/');
 
       const linha = (label, valor, cor='var(--text)') =>
         `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
@@ -570,11 +582,11 @@ const Time = {
         <div style="padding:10px 14px">
           <!-- Período -->
           <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
-            Semana atual · ${semAtual.label || '—'}
+            ${periodoLabel}
           </div>
 
           <!-- Gráfico compacto -->
-          ${Vendedor._graficoEvolucao(ps)}
+          ${Vendedor._graficoEvolucao(psFiltrado.length ? psFiltrado : ps)}
 
           <!-- Produção -->
           <div style="margin:10px 0 4px">
