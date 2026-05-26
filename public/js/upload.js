@@ -338,67 +338,59 @@ const Upload = {
   },
 
   async vincularLote() {
-    const evento = document.getElementById('nid-evento-global')?.value;
-    if (!evento) { Utils.toast('Selecione um evento primeiro', 'error'); return; }
+    const eventoCod = document.getElementById('nid-evento-global')?.value;
+    if (!eventoCod) { Utils.toast('Selecione um evento primeiro', 'error'); return; }
     const checks = [...document.querySelectorAll('.nid-check:checked')];
     if (!checks.length) { Utils.toast('Selecione pelo menos uma OC ou Plano', 'error'); return; }
 
     const btn = document.getElementById('btn-vincular-lote');
     Utils.btnLoading(btn, true);
 
-    let ok = 0, erros = 0;
-    for (const cb of checks) {
-      const codigo = cb.dataset.codigo;
-      const tipo   = cb.dataset.tipo;
-      try {
-        await API.vincularAtualizar(tipo, codigo, evento);
-        if (tipo === 'oc') this._naoIdOCs = this._naoIdOCs.filter(x => x !== codigo);
-        else               this._naoIdPlanos = this._naoIdPlanos.filter(x => x !== codigo);
-        const id = btoa(unescape(encodeURIComponent(codigo))).replace(/[+=\/]/g,'_');
-        const el = document.getElementById('nid-' + id);
-        if (el) el.parentElement?.remove() || el.remove();
-        cb.closest('div')?.remove();
-        ok++;
-      } catch { erros++; }
-    }
+    const ocs    = checks.filter(cb => cb.dataset.tipo === 'oc').map(cb => cb.dataset.codigo);
+    const planos = checks.filter(cb => cb.dataset.tipo === 'plano').map(cb => cb.dataset.codigo);
 
-    Utils.toast(`✓ ${ok} vinculado${ok!==1?'s':''} a "${evento}"${erros?` · ${erros} erro(s)`:''}`, ok ? 'success' : 'error');
-    this._atualizarSelecao();
-    Utils.btnLoading(btn, false);
-
-    if (!this._naoIdOCs.length && !this._naoIdPlanos.length && !this._semCanal.length) {
-      document.getElementById('upload-nao-id').innerHTML = '';
+    try {
+      if (ocs.length) {
+        const r = await API.salvarOCsLote(eventoCod, ocs);
+        if (r.erro) throw new Error(r.erro);
+      }
+      if (planos.length) {
+        const r = await API.salvarPlanosLote(eventoCod, planos);
+        if (r.erro) throw new Error(r.erro);
+      }
+      ocs.forEach(c    => { this._naoIdOCs    = this._naoIdOCs.filter(x => x !== c); });
+      planos.forEach(c => { this._naoIdPlanos = this._naoIdPlanos.filter(x => x !== c); });
+      const total = ocs.length + planos.length;
+      Utils.toast(`✓ ${total} vinculado${total!==1?'s':''} com sucesso!`, 'success');
+      this._renderNaoId();
+    } catch(e) {
+      Utils.toast('Erro ao vincular: ' + e.message, 'error');
+      Utils.btnLoading(btn, false);
     }
   },
 
   async vincular(codigo, tipo) {
     const id  = btoa(unescape(encodeURIComponent(codigo))).replace(/[+=\/]/g, '_');
     const sel = document.getElementById('sel-' + id);
-    const evento = sel ? sel.value : '';
-    if (!evento) { Utils.toast('Selecione um evento', 'error'); return; }
+    const eventoCod = sel ? sel.value : '';
+    if (!eventoCod) { Utils.toast('Selecione um evento', 'error'); return; }
 
     const btn = sel.nextElementSibling;
     Utils.btnLoading(btn, true);
 
     try {
-      const res = await API.vincularAtualizar(tipo, codigo, evento);
+      let r;
+      if (tipo === 'oc') r = await API.salvarOCsLote(eventoCod, [codigo]);
+      else               r = await API.salvarPlanosLote(eventoCod, [codigo]);
+      if (r.erro) throw new Error(r.erro);
 
       if (tipo === 'oc') this._naoIdOCs = this._naoIdOCs.filter(x => x !== codigo);
       else               this._naoIdPlanos = this._naoIdPlanos.filter(x => x !== codigo);
 
-      const el = document.getElementById('nid-' + id);
-      if (el) el.remove();
-
-      const msg = res.atualizados > 0
-        ? `Vinculado! ${res.atualizados} venda${res.atualizados !== 1 ? 's' : ''} atualizada${res.atualizados !== 1 ? 's' : ''}`
-        : `Vinculado a ${evento}!`;
-      Utils.toast(msg, 'success');
-
-      if (!this._naoIdOCs.length && !this._naoIdPlanos.length && !this._semCanal.length) {
-        document.getElementById('upload-nao-id').innerHTML = '';
-      }
-    } catch {
-      Utils.toast('Erro ao vincular', 'error');
+      this._renderNaoId();
+      Utils.toast('Vinculado com sucesso!', 'success');
+    } catch(e) {
+      Utils.toast('Erro ao vincular: ' + e.message, 'error');
       Utils.btnLoading(btn, false);
     }
   },
