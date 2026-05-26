@@ -664,7 +664,8 @@ router.post('/get_semaforo', async (req, res) => {
       const ultima = ultimaVenda[v.codigo];
       let diasSem = 0;
       if (!ultima) {
-        diasSem = diasUteisEntre(v.dtInicio || hojeS, hojeS);
+        // Nunca vendeu: conta dias desde dtInicio, mas mínimo 1 para não mostrar "Vendeu hoje"
+        diasSem = Math.max(1, diasUteisEntre(v.dtInicio || hojeS, hojeS));
       } else {
         const dUltima = new Date(ultima + 'T12:00:00');
         dUltima.setDate(dUltima.getDate() + 1);
