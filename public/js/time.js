@@ -505,7 +505,7 @@ const Time = {
                     <div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Vendas</div>
                   </div>
                   <div>
-                    <div style="font-size:12px;font-weight:700;color:#4caf50">R$ ${(fat/1000).toFixed(1)}k</div>
+                    <div style="font-size:12px;font-weight:700;color:#4caf50">R$ ${(fat).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
                     <div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Fat.</div>
                   </div>
                 </div>
@@ -615,12 +615,17 @@ const Time = {
             const fixo  = fixos[(v.nivel||'junior').toLowerCase()];
             if (!fixo || !tGeral.faturamento) return '';
             const comissao   = tGeral.faturamento * 0.25;
+            const total      = fixo + comissao;
             const custoTotal = fixo + comissao;
             const roi        = Math.round((tGeral.faturamento - custoTotal) / custoTotal * 100);
             const cor        = roi >= 0 ? '#4caf50' : '#e85d5d';
             return '<div style="margin:8px 0 4px">' +
               linha('Fixo', 'R$ ' + fixo.toLocaleString('pt-BR')) +
               linha('Comissão', 'R$ ' + comissao.toLocaleString('pt-BR',{minimumFractionDigits:2})) +
+              `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);background:var(--bg-3);margin:2px -14px;padding-left:14px;padding-right:14px">
+                <span style="font-size:11px;font-weight:700;color:var(--text)">Total Recebimento</span>
+                <span style="font-size:11px;font-weight:700;color:#4caf50">R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
+              </div>` +
               linha('ROI', roi + '%', cor) +
             '</div>';
           })()}
