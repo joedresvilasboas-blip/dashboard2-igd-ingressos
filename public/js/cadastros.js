@@ -484,6 +484,12 @@ const CadEquipes = {
 
   _form(eq) {
     const isNovo = !eq.nome;
+    const supervisores = this.vendedores.filter(v => v.perfil === 'SUPERVISOR' && v.ativo);
+    const supOpts = supervisores.map(s => {
+      const label = s.equipe === eq.nome ? `⭐ ${s.apelido||s.nome}` : `${s.apelido||s.nome} (${s.equipe||'sem equipe'})`;
+      const sel   = eq.lider === (s.apelido||s.nome) || eq.lider === s.nome;
+      return `<option value="${s.apelido||s.nome}" ${sel?'selected':''}>${label}</option>`;
+    }).join('');
     return `
       <div class="divider"></div>
       <h4 style="margin-bottom:var(--s4)">${isNovo ? 'Nova Equipe' : 'Editar Equipe'}</h4>
@@ -497,8 +503,16 @@ const CadEquipes = {
       </div>
       <div class="input-group">
         <label class="input-label">Líder <span style="color:var(--text-3);font-weight:400">(opcional)</span></label>
-        <input id="eq-f-lider" class="input" value="${eq.lider||''}"
-          placeholder="Nome do líder da equipe">
+        ${supervisores.length
+          ? `<select id="eq-f-lider" class="input" style="appearance:auto">
+               <option value="">— Nenhum —</option>
+               ${supOpts}
+             </select>`
+          : `<div style="font-size:12px;color:var(--text-3);padding:var(--s2) 0;font-style:italic">
+               Nenhum supervisor cadastrado. Cadastre um vendedor com Perfil = Supervisor para selecionar aqui.
+             </div>
+             <input id="eq-f-lider" class="input" value="${eq.lider||''}" placeholder="Nome do líder" style="display:none">`
+        }
       </div>
       <div style="display:flex;gap:var(--s2)">
         <button class="btn btn-secondary" style="flex:1"
