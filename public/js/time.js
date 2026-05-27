@@ -512,31 +512,51 @@ const Time = {
       <!-- Cards dos vendedores -->
       ${(() => {
         const hoje0 = new Date(); hoje0.setHours(0,0,0,0);
-        const novatos = semaforoEq.filter(v => {
-          if (!v.dtInicio) return false;
-          const d = Math.floor((hoje0 - new Date(v.dtInicio + 'T00:00:00')) / 86400000);
-          return d >= 0 && d <= 30;
-        });
+        const novatos = semaforoEq
+          .filter(v => {
+            if (!v.dtInicio) return false;
+            const d = Math.floor((hoje0 - new Date(v.dtInicio + 'T00:00:00')) / 86400000);
+            return d >= 0 && d <= 30;
+          })
+          .map(v => ({
+            ...v,
+            diasNaEmp: Math.floor((hoje0 - new Date(v.dtInicio + 'T00:00:00')) / 86400000),
+            rv: rankingEq.find(r => r.codigo === v.codigo) || {},
+          }))
+          .sort((a, b) => b.diasNaEmp - a.diasNaEmp); // decrescente: mais antigo primeiro
+
         if (!novatos.length) return '';
         return `
         <div style="background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.25);border-radius:var(--r3);padding:var(--s4);margin-bottom:var(--s4)">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#a78bfa;margin-bottom:var(--s3)">🆕 Em adaptação — primeiros 30 dias (${novatos.length})</div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            ${novatos.map(v => {
-              const d = Math.floor((hoje0 - new Date(v.dtInicio + 'T00:00:00')) / 86400000);
-              const bar = Math.round(d / 30 * 100);
-              const rv = rankingEq.find(r => r.codigo === v.codigo) || {};
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${novatos.map(({ v: _, diasNaEmp, rv, ...vv } = {}, ...rest) => {
+              // fallback: pega do objeto original
+              const nov = novatos.find(n => n.diasNaEmp !== undefined) && _;
+              return '';
+            }).join('')}
+            ${novatos.map(n => {
+              const { diasNaEmp, rv } = n;
+              const bar   = Math.round(diasNaEmp / 30 * 100);
+              const hc    = rv.headcounts || 0;
+              const fat   = rv.faturamento || 0;
+              const temDados = hc > 0 || fat > 0;
               return `
               <div style="display:flex;align-items:center;gap:10px">
-                <div style="font-size:12px;font-weight:600;color:var(--text);min-width:90px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.apelido||v.nome}</div>
+                <div style="font-size:12px;font-weight:600;color:var(--text);min-width:100px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${n.apelido||n.nome}</div>
                 <div style="flex:1;background:var(--bg-3);border-radius:99px;height:5px;overflow:hidden">
                   <div style="height:100%;background:#a78bfa;border-radius:99px;width:${bar}%"></div>
                 </div>
-                <div style="font-size:10px;color:#a78bfa;min-width:30px;text-align:right">${d}d</div>
-                <div style="font-size:10px;color:var(--text-3);min-width:50px;text-align:right">${rv.headcounts||0} HCs</div>
+                <div style="font-size:10px;color:#a78bfa;min-width:28px;text-align:right;font-weight:700">${diasNaEmp}d</div>
+                <div style="font-size:10px;min-width:80px;text-align:right;color:${temDados?'var(--text)':'var(--text-3)'}">
+                  ${temDados ? hc + ' HCs · R$ ' + (fat/1000).toFixed(1) + 'k' : '<span style="font-style:italic">sem vendas</span>'}
+                </div>
               </div>`;
             }).join('')}
           </div>
+          ${!rankingEq.some(r => novatos.find(n => n.codigo === r.codigo && r.headcounts > 0))
+            ? `<div style="font-size:10px;color:var(--text-3);margin-top:var(--s3);font-style:italic">* HCs e faturamento refletem o período selecionado. Aplique um filtro de mês para ver o histórico completo.</div>`
+            : ''}
         </div>`;
       })()}
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3);margin-bottom:var(--s3)">Vendedores</div>
