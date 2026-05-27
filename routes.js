@@ -679,7 +679,7 @@ router.post('/get_semaforo', async (req, res) => {
         codigo: v.codigo, nome: v.nome, apelido: v.apelido || v.nome,
         equipe: v.equipe, nivel: v.nivel.toLowerCase(), perfil: v.perfil || 'VENDEDOR',
         faturamento: Math.round((faturamentoMes[v.codigo]||0)*100)/100,
-        ultimaVenda: ultima || '', diasSemVenda: diasSem, status,
+        ultimaVenda: ultima || '', diasSemVenda: diasSem, status, dtInicio: v.dtInicio || '',
       };
     });
 
