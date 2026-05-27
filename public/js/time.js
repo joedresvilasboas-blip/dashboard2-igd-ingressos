@@ -452,6 +452,63 @@ const Time = {
         <div style="font-size:11px;color:var(--text-3);margin-top:6px">${eq.hc} de ${metaEq} HCs · ${metaEq - eq.hc > 0 ? 'Faltam ' + (metaEq - eq.hc) + ' HCs' : '✓ Meta atingida!'}</div>
       </div>
 
+      <!-- Análise Financeira do Time -->
+      ${(() => {
+        const fixosVend = { junior:1500, pleno:1800, senior:2200 };
+        const fixosSup  = { junior:3000, pleno:3500, senior:4000 };
+        const fatEquipe = eq.fat;
+        let totalFixos = 0, totalComissoes = 0, totalBonusSup = 0;
+        semaforoEq.forEach(v => {
+          const sup   = v.status === 'supervisor' || (v.perfil||'').toUpperCase() === 'SUPERVISOR';
+          const nivel = (v.nivel||'junior').toLowerCase();
+          const fixo  = sup ? (fixosSup[nivel]||3000) : (fixosVend[nivel]||1500);
+          const fatV  = (rankingEq.find(r => r.codigo === v.codigo)||{}).faturamento || 0;
+          totalFixos      += fixo;
+          totalComissoes  += fatV * 0.25;
+          if (sup) totalBonusSup += fatEquipe * 0.05;
+        });
+        const custoTotal  = totalFixos + totalComissoes + totalBonusSup;
+        const roi         = fatEquipe && custoTotal ? Math.round((fatEquipe - custoTotal) / custoTotal * 100) : null;
+        const cac         = eq.hc ? +(custoTotal / eq.hc).toFixed(2) : null;
+        const varRate     = fatEquipe ? (totalComissoes + totalBonusSup) / fatEquipe : 0.30;
+        const fatBE       = varRate < 1 ? totalFixos / (1 - varRate) : null;
+        const avgTicket   = eq.hc ? fatEquipe / eq.hc : 0;
+        const hcBE        = fatBE && avgTicket ? Math.ceil(fatBE / avgTicket) : null;
+        const roiCor      = roi === null ? 'var(--text-3)' : roi >= 0 ? '#4caf50' : '#e85d5d';
+        const beCor       = hcBE === null ? 'var(--text-3)' : eq.hc >= hcBE ? '#4caf50' : '#f87171';
+        const linha = (l, v, c='var(--text)') =>
+          `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:11px;color:var(--text-3)">${l}</span>
+            <span style="font-size:11px;font-weight:600;color:${c}">${v}</span>
+          </div>`;
+        return `
+        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r3);padding:var(--s4);margin-bottom:var(--s4)">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--s3)">💰 Análise Financeira do Time</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s3);margin-bottom:var(--s3)">
+            <div style="background:var(--bg-3);border-radius:var(--r2);padding:var(--s3);text-align:center">
+              <div style="font-size:20px;font-weight:800;color:${roiCor}">${roi !== null ? roi + '%' : '—'}</div>
+              <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em">ROI do Time</div>
+            </div>
+            <div style="background:var(--bg-3);border-radius:var(--r2);padding:var(--s3);text-align:center">
+              <div style="font-size:20px;font-weight:800;color:var(--accent)">${cac !== null ? 'R$ ' + cac.toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—'}</div>
+              <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em">CAC (por HC)</div>
+            </div>
+          </div>
+          ${linha('Fixos totais', 'R$ ' + totalFixos.toLocaleString('pt-BR'))}
+          ${linha('Comissões (25% individual)', 'R$ ' + totalComissoes.toLocaleString('pt-BR',{minimumFractionDigits:2}))}
+          ${totalBonusSup ? linha('Bônus supervisor (5% fat.)', 'R$ ' + totalBonusSup.toLocaleString('pt-BR',{minimumFractionDigits:2}), '#f59e0b') : ''}
+          ${linha('Custo total', 'R$ ' + custoTotal.toLocaleString('pt-BR',{minimumFractionDigits:2}))}
+          ${linha('Faturamento', 'R$ ' + fatEquipe.toLocaleString('pt-BR',{minimumFractionDigits:2}), '#4caf50')}
+          <div style="display:flex;justify-content:space-between;padding:8px 0;margin-top:4px;border-top:2px solid var(--border)">
+            <span style="font-size:12px;font-weight:700;color:var(--text)">Break-even</span>
+            <span style="font-size:12px;font-weight:700;color:${beCor}">
+              ${hcBE !== null ? hcBE + ' HCs · R$ ' + (fatBE||0).toLocaleString('pt-BR',{maximumFractionDigits:0}) : '—'}
+              ${hcBE !== null && eq.hc >= hcBE ? ' ✓' : hcBE !== null ? ' (faltam ' + (hcBE - eq.hc) + ' HCs)' : ''}
+            </span>
+          </div>
+        </div>`;
+      })()}
+
       <!-- Cards dos vendedores -->
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3);margin-bottom:var(--s3)">Vendedores</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--s3);margin-bottom:var(--s4)">
@@ -656,6 +713,10 @@ const Time = {
             const roi = Math.round((fatProprio - custoTotal) / custoTotal * 100);
             const cor = roi >= 0 ? '#4caf50' : '#e85d5d';
             if (!fatProprio) return '';
+            const avgTicket  = tGeral.hc > 0 ? fatProprio / tGeral.hc : 0;
+            const beHC       = avgTicket > 0 ? Math.ceil(fixo / (avgTicket * 0.75)) : null;
+            const beFat      = fixo / 0.75;
+            const beCor      = beHC !== null ? (tGeral.hc >= beHC ? '#4caf50' : '#f87171') : 'var(--text-3)';
             return '<div style="margin:8px 0 4px">' +
               linha('Fixo', 'R$ ' + fixo.toLocaleString('pt-BR')) +
               linha('Comissão', 'R$ ' + comissao.toLocaleString('pt-BR',{minimumFractionDigits:2})) +
@@ -664,6 +725,7 @@ const Time = {
                 <span style="font-size:11px;font-weight:700;color:#4caf50">R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
               </div>` +
               linha('ROI', roi + '%', cor) +
+              (beHC !== null ? linha('Break-even', beHC + ' HCs · R$ ' + beFat.toLocaleString('pt-BR',{maximumFractionDigits:0}) + (tGeral.hc >= beHC ? ' ✓' : ' (faltam ' + (beHC - tGeral.hc) + ')'), beCor) : '') +
             '</div>';
           })()}
 
