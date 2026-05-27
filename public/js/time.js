@@ -614,7 +614,9 @@ const Time = {
 
           <!-- ROI compacto -->
           ${(() => {
-            const isSup = (v.perfil||'').toUpperCase() === 'SUPERVISOR';
+            const isSup = (v.perfil||'').toUpperCase() === 'SUPERVISOR'
+                       || v.status === 'supervisor'
+                       || (Time._dados?.semaforo||[]).find(s=>s.codigo===codigo)?.status === 'supervisor';
             const fixos = isSup
               ? { junior:3000, pleno:3500, senior:4000 }
               : { junior:1500, pleno:1800, senior:2200 };
