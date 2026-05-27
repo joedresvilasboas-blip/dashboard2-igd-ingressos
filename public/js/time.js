@@ -510,6 +510,35 @@ const Time = {
       })()}
 
       <!-- Cards dos vendedores -->
+      ${(() => {
+        const hoje0 = new Date(); hoje0.setHours(0,0,0,0);
+        const novatos = semaforoEq.filter(v => {
+          if (!v.dtInicio) return false;
+          const d = Math.floor((hoje0 - new Date(v.dtInicio + 'T00:00:00')) / 86400000);
+          return d >= 0 && d <= 30;
+        });
+        if (!novatos.length) return '';
+        return `
+        <div style="background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.25);border-radius:var(--r3);padding:var(--s4);margin-bottom:var(--s4)">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#a78bfa;margin-bottom:var(--s3)">🆕 Em adaptação — primeiros 30 dias (${novatos.length})</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${novatos.map(v => {
+              const d = Math.floor((hoje0 - new Date(v.dtInicio + 'T00:00:00')) / 86400000);
+              const bar = Math.round(d / 30 * 100);
+              const rv = rankingEq.find(r => r.codigo === v.codigo) || {};
+              return `
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="font-size:12px;font-weight:600;color:var(--text);min-width:90px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.apelido||v.nome}</div>
+                <div style="flex:1;background:var(--bg-3);border-radius:99px;height:5px;overflow:hidden">
+                  <div style="height:100%;background:#a78bfa;border-radius:99px;width:${bar}%"></div>
+                </div>
+                <div style="font-size:10px;color:#a78bfa;min-width:30px;text-align:right">${d}d</div>
+                <div style="font-size:10px;color:var(--text-3);min-width:50px;text-align:right">${rv.headcounts||0} HCs</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+      })()}
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3);margin-bottom:var(--s3)">Vendedores</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--s3);margin-bottom:var(--s4)">
         ${semaforoEq.map(v => {
@@ -523,6 +552,15 @@ const Time = {
             const ultim = new Date(v.ultimaVenda + 'T00:00:00');
             dias = Math.floor((hoje - ultim) / 86400000);
           }
+          // Dias na empresa (primeiros 30)
+          const hoje0 = new Date(); hoje0.setHours(0,0,0,0);
+          const diasNaEmp = v.dtInicio
+            ? Math.floor((hoje0 - new Date(v.dtInicio + 'T00:00:00')) / 86400000)
+            : null;
+          const isNovato = diasNaEmp !== null && diasNaEmp <= 30;
+          const novatoBadge = isNovato
+            ? `<div style="font-size:9px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.3);border-radius:10px;padding:2px 7px;flex-shrink:0">🆕 ${diasNaEmp}d</div>`
+            : '';
           const hc  = rv.headcounts  || 0;
           const vnd = rv.vendas      || 0;
           const fat = rv.faturamento || 0;
@@ -546,7 +584,8 @@ const Time = {
                       ${isSup ? '⭐ Supervisor' : (v.nivel||'JUNIOR')} · ${v.codigo}
                     </div>
                   </div>
-                  <div style="display:flex;align-items:center;gap:8px">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    ${novatoBadge}
                     ${isSup
                       ? `<div style="font-size:10px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.15);padding:2px 7px;border-radius:10px">SUP</div>`
                       : `<div style="width:8px;height:8px;border-radius:50%;background:${cor};box-shadow:0 0 6px ${cor}"></div>`}
