@@ -1187,6 +1187,10 @@ router.post('/get_perfil_vendedor', async (req, res) => {
     const { codigo, semanas: nSems = 8, strIni: bStrIni, strFim: bStrFim } = req.body;
     if (!codigo) return res.json({ erro: 'Código obrigatório' });
 
+    // Força leitura fresca dos vendedores para garantir campo perfil atualizado
+    const { del } = require('./cache');
+    del('vendedores');
+
     const cal  = await getCalendario();
     const hoje = hojeStr();
     let sems;
